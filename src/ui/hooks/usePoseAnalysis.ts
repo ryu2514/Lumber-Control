@@ -1,4 +1,4 @@
-// src/hooks/usePoseAnalysis.ts (最終安定版)
+// src/hooks/usePoseAnalysis.ts (修正版)
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { PoseLandmarkerService } from '../../inference/mediapipe/poseLandmarkerService';
@@ -21,12 +21,12 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
   });
 
   const { 
-  currentTest, 
-  testStatus, 
-  updateLandmarks, 
-  completeTest, 
-  stopTest 
-} = useAppStore();
+    // currentTest変数を削除（使用されていないため）
+    testStatus, 
+    updateLandmarks, 
+    completeTest, 
+    stopTest 
+  } = useAppStore();
 
   const handleLandmarkResults = useCallback((landmarks: Landmark[], timestamp: number) => {
     // 常にランドマークのデータは更新するが、UIへの反映はストアに任せる

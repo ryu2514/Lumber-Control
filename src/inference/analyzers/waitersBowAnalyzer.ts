@@ -1,4 +1,4 @@
-// src/inference/analyzers/waitersBowAnalyzer.ts (新機能追加版)
+// src/inference/analyzers/waitersBowAnalyzer.ts (修正版)
 
 import { Landmark, TestResult, TestType } from '../../types';
 import { calculateAngleBetweenPoints } from '../utils/mathUtils';
@@ -9,7 +9,9 @@ export class WaitersBowAnalyzer extends BaseAnalyzer {
     super(TestType.WAITERS_BOW);
   }
 
-analyze(landmarks: Landmark[], landmarkHistory: Landmark[][] = []): TestResult {    if (landmarkHistory.length === 0) {
+  // landmarksパラメータを_landmarksに変更（未使用であることを明示）
+  analyze(_landmarks: Landmark[], landmarkHistory: Landmark[][] = []): TestResult {
+    if (landmarkHistory.length === 0) {
       // データがない場合はデフォルト値を返す
       return this.createBaseResult(0, {}, "解析データが不足しています。");
     }

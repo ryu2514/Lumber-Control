@@ -1,4 +1,4 @@
-// src/inference/analyzers/waitersBowAnalyzer.ts (修正版)
+// src/inference/analyzers/waitersBowAnalyzer.ts (完全版)
 
 import { Landmark, TestResult, TestType } from '../../types';
 import { calculateAngleBetweenPoints } from '../utils/mathUtils';
@@ -9,75 +9,182 @@ export class WaitersBowAnalyzer extends BaseAnalyzer {
     super(TestType.WAITERS_BOW);
   }
 
-  // landmarksパラメータを_landmarksに変更（未使用であることを明示）
   analyze(_landmarks: Landmark[], landmarkHistory: Landmark[][] = []): TestResult {
     if (landmarkHistory.length === 0) {
-      // データがない場合はデフォルト値を返す
       return this.createBaseResult(0, {}, "解析データが不足しています。");
     }
 
-    // 履歴の中から最も深くお辞儀したフレーム（肩のY座標が最も大きい）を探す
-    const deepestFrame = landmarkHistory.reduce((deepest, current) => {
-      // 左右の肩のY座標の平均値で比較
-      const deepestShoulderY = (deepest[11].y + deepest[12].y) / 2;
-      const currentShoulderY = (current[11].y + current[12].y) / 2;
-      return currentShoulderY > deepestShoulderY ? current : deepest;
-    }, landmarkHistory[0]);
+    try {
+      // 履歴の中から最も深くお辞儀したフレーム（肩のY座標が最も大きい）を探す
+      const deepestFrame = landmarkHistory.reduce((deepest, current) => {
+        // 安全性チェック
+        if (!current[11] || !current[12] || !deepest[11] || !deepest[12]) {
+          return deepest;
+        }
+        
+        const deepestShoulderY = (deepest[11].y + deepest[12].y) / 2;
+        const currentShoulderY = (current[11].y + current[12].y) / 2;
+        return currentShoulderY > deepestShoulderY ? current : deepest;
+      }, landmarkHistory[0]);
 
-    const leftShoulder = deepestFrame[11];
-    const rightShoulder = deepestFrame[12];
-    const leftHip = deepestFrame[23];
-    const rightHip = deepestFrame[24];
-    const leftKnee = deepestFrame[25];
-    const rightKnee = deepestFrame[26];
-    const leftAnkle = deepestFrame[27];
-    const rightAnkle = deepestFrame[28];
-    const leftEar = deepestFrame[7];
+      // 必要なランドマークの存在確認
+      const requiredLandmarks = [11, 12, 23, 24, 25, 26, 27, 28, 7];
+      const missingLandmarks = requiredLandmarks.filter(index => 
+        !deepestFrame[index] || deepestFrame[index].visibility < 0.5
+      );
 
-    const shoulder = { x: (leftShoulder.x + rightShoulder.x) / 2, y: (leftShoulder.y + rightShoulder.y) / 2, z: 0, visibility: 1 };
-    const hip = { x: (leftHip.x + rightHip.x) / 2, y: (leftHip.y + rightHip.y) / 2, z: 0, visibility: 1 };
-    const knee = { x: (leftKnee.x + rightKnee.x) / 2, y: (leftKnee.y + rightKnee.y) / 2, z: 0, visibility: 1 };
-    const ankle = { x: (leftAnkle.x + rightAnkle.x) / 2, y: (leftAnkle.y + rightAnkle.y) / 2, z: 0, visibility: 1 };
-
-    // ★★★ 新機能：股関節と膝関節の屈曲角度を計算 ★★★
-    const hipFlexionAngle = 180 - calculateAngleBetweenPoints(shoulder, hip, knee);
-    const kneeFlexionAngle = 180 - calculateAngleBetweenPoints(hip, knee, ankle);
-
-    // 腰椎の代償（頭が体幹より前に出ているか）
-    const spineCompensation = Math.abs(leftEar.x - leftShoulder.x);
-
-    // スコア計算
-    let score = 100;
-    // 理想の股関節屈曲角度90度からの差で減点
-    score -= Math.abs(hipFlexionAngle - 90) * 1.2;
-    // 膝の屈曲が大きいほど減点
-    score -= kneeFlexionAngle * 1.5;
-    // 腰椎の代償が大きいほど減点
-    score -= spineCompensation * 500;
-    
-    // フィードバック
-    let feedback = `最大到達時の股関節屈曲は ${hipFlexionAngle.toFixed(1)}°、膝関節屈曲は ${kneeFlexionAngle.toFixed(1)}° です。`;
-    if (score < 70) {
-      if (Math.abs(hipFlexionAngle - 90) > 20) {
-        feedback += " 股関節の可動域に課題がある可能性があります。";
+      if (missingLandmarks.length > 0) {
+        return this.createBaseResult(
+          0, 
+          {}, 
+          `重要なランドマークが検出されませんでした。全身がカメラに映るように調整してください。(不足: ${missingLandmarks.length}個)`
+        );
       }
-      if (kneeFlexionAngle > 20) {
-        feedback += " 膝の屈曲で代償する傾向があります。";
+
+      const leftShoulder = deepestFrame[11];
+      const rightShoulder = deepestFrame[12];
+      const leftHip = deepestFrame[23];
+      const rightHip = deepestFrame[24];
+      const leftKnee = deepestFrame[25];
+      const rightKnee = deepestFrame[26];
+      const leftAnkle = deepestFrame[27];
+      const rightAnkle = deepestFrame[28];
+      const leftEar = deepestFrame[7];
+
+      // 中点の計算
+      const shoulder = { 
+        x: (leftShoulder.x + rightShoulder.x) / 2, 
+        y: (leftShoulder.y + rightShoulder.y) / 2, 
+        z: 0, 
+        visibility: 1 
+      };
+      const hip = { 
+        x: (leftHip.x + rightHip.x) / 2, 
+        y: (leftHip.y + rightHip.y) / 2, 
+        z: 0, 
+        visibility: 1 
+      };
+      const knee = { 
+        x: (leftKnee.x + rightKnee.x) / 2, 
+        y: (leftKnee.y + rightKnee.y) / 2, 
+        z: 0, 
+        visibility: 1 
+      };
+      const ankle = { 
+        x: (leftAnkle.x + rightAnkle.x) / 2, 
+        y: (leftAnkle.y + rightAnkle.y) / 2, 
+        z: 0, 
+        visibility: 1 
+      };
+
+      // 角度計算
+      const hipFlexionAngle = 180 - calculateAngleBetweenPoints(shoulder, hip, knee);
+      const kneeFlexionAngle = 180 - calculateAngleBetweenPoints(hip, knee, ankle);
+
+      // 腰椎の代償（頭が体幹より前に出ているか）
+      const spineCompensation = Math.abs(leftEar.x - leftShoulder.x);
+
+      // 体幹の傾斜角度（垂直からの角度）
+      const trunkAngle = Math.atan2(
+        Math.abs(shoulder.x - hip.x), 
+        Math.abs(hip.y - shoulder.y)
+      ) * (180 / Math.PI);
+
+      // スコア計算（より詳細な評価）
+      let score = 100;
+      let penalties = [];
+
+      // 股関節屈曲角度の評価（理想: 90度）
+      const hipAngleDiff = Math.abs(hipFlexionAngle - 90);
+      if (hipAngleDiff > 5) {
+        const penalty = Math.min(hipAngleDiff * 1.2, 30);
+        score -= penalty;
+        penalties.push(`股関節角度偏差: -${penalty.toFixed(1)}点`);
       }
-      if (spineCompensation > 0.05) {
-        feedback += " 腰椎を過度に屈曲させています。体幹を一直線に保つ意識を持ちましょう。";
+
+      // 膝関節屈曲の評価（理想: 最小限）
+      if (kneeFlexionAngle > 10) {
+        const penalty = Math.min(kneeFlexionAngle * 1.5, 25);
+        score -= penalty;
+        penalties.push(`膝屈曲代償: -${penalty.toFixed(1)}点`);
       }
-    } else {
-      feedback += " 良好なヒップヒンジ動作です。";
+
+      // 腰椎代償の評価
+      if (spineCompensation > 0.03) {
+        const penalty = Math.min(spineCompensation * 400, 20);
+        score -= penalty;
+        penalties.push(`腰椎代償: -${penalty.toFixed(1)}点`);
+      }
+
+      // 体幹傾斜の評価
+      if (trunkAngle < 30) {
+        const penalty = (30 - trunkAngle) * 0.8;
+        score -= penalty;
+        penalties.push(`前傾不足: -${penalty.toFixed(1)}点`);
+      }
+
+      // フィードバック生成
+      let feedback = `最大前傾時の股関節屈曲: ${hipFlexionAngle.toFixed(1)}°、膝関節屈曲: ${kneeFlexionAngle.toFixed(1)}°、体幹傾斜: ${trunkAngle.toFixed(1)}°`;
+
+      if (score >= 85) {
+        feedback += "\n\n✅ 優秀なヒップヒンジ動作です。股関節の可動性と体幹の安定性が良好です。";
+      } else if (score >= 70) {
+        feedback += "\n\n⚠️ 概ね良好ですが、改善の余地があります：";
+        if (hipAngleDiff > 15) {
+          feedback += "\n• 股関節の可動域制限が見られます";
+        }
+        if (kneeFlexionAngle > 15) {
+          feedback += "\n• 膝を使った代償動作があります";
+        }
+      } else {
+        feedback += "\n\n❌ 改善が必要です：";
+        if (hipAngleDiff > 20) {
+          feedback += "\n• 股関節の可動域に大きな制限があります";
+        }
+        if (kneeFlexionAngle > 20) {
+          feedback += "\n• 膝屈曲による代償が顕著です";
+        }
+        if (spineCompensation > 0.05) {
+          feedback += "\n• 腰椎を過度に曲げています";
+        }
+        if (trunkAngle < 20) {
+          feedback += "\n• 前傾が不十分です";
+        }
+      }
+
+      // エクササイズ推奨
+      if (score < 80) {
+        feedback += "\n\n💡 推奨エクササイズ:";
+        if (hipAngleDiff > 15) {
+          feedback += "\n• ハムストリングスのストレッチ";
+          feedback += "\n• 股関節屈曲可動域訓練";
+        }
+        if (kneeFlexionAngle > 15) {
+          feedback += "\n• ヒップヒンジ動作の練習";
+          feedback += "\n• 体幹安定性訓練";
+        }
+      }
+
+      console.log('Analysis penalties:', penalties);
+
+      return this.createBaseResult(
+        Math.max(0, Math.min(100, Math.round(score))),
+        {
+          '股関節屈曲角度': Math.round(hipFlexionAngle * 10) / 10,
+          '膝関節屈曲角度': Math.round(kneeFlexionAngle * 10) / 10,
+          '体幹傾斜角度': Math.round(trunkAngle * 10) / 10,
+          '腰椎代償値': Math.round(spineCompensation * 1000) / 1000,
+        },
+        feedback
+      );
+
+    } catch (error) {
+      console.error('Error in WaitersBowAnalyzer:', error);
+      return this.createBaseResult(
+        0, 
+        {}, 
+        "解析中にエラーが発生しました。再度お試しください。"
+      );
     }
-
-    return this.createBaseResult(
-      Math.max(0, Math.min(100, score)), // スコアを0-100の範囲に収める
-      {
-        '股関節屈曲角度': hipFlexionAngle,
-        '膝関節屈曲角度': kneeFlexionAngle,
-      },
-      feedback
-    );
   }
 }

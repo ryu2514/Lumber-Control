@@ -1,4 +1,4 @@
-// src/hooks/usePoseAnalysis.ts (修正版)
+// src/ui/hooks/usePoseAnalysis.ts (完全版)
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { PoseLandmarkerService } from '../../inference/mediapipe/poseLandmarkerService';
@@ -11,6 +11,8 @@ import { useAppStore } from '../../state/store';
 
 export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
   const [isModelReady, setIsModelReady] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [isInitializing, setIsInitializing] = useState(false);
   const poseLandmarkerService = useRef<PoseLandmarkerService | null>(null);
   const rafId = useRef<number | null>(null);
   const landmarkHistory = useRef<Landmark[][]>([]);
@@ -21,7 +23,6 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
   });
 
   const { 
-    // currentTest変数を削除（使用されていないため）
     testStatus, 
     updateLandmarks, 
     completeTest, 
@@ -29,89 +30,205 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
   } = useAppStore();
 
   const handleLandmarkResults = useCallback((landmarks: Landmark[], timestamp: number) => {
-    // 常にランドマークのデータは更新するが、UIへの反映はストアに任せる
-    updateLandmarks(landmarks, timestamp);
-    landmarkHistory.current.push(landmarks);
-    if (landmarkHistory.current.length > 300) {
-      landmarkHistory.current.shift();
+    try {
+      // ランドマークの品質チェック
+      if (!landmarks || landmarks.length === 0) {
+        console.warn('Empty landmarks received');
+        return;
+      }
+
+      // 重要なランドマークの可視性チェック
+      const importantLandmarks = [11, 12, 23, 24, 25, 26, 27, 28]; // 肩、腰、膝、足首
+      const visibleImportantLandmarks = importantLandmarks.filter(
+        index => landmarks[index]?.visibility > 0.5
+      );
+
+      if (visibleImportantLandmarks.length < 6) {
+        console.warn(`Only ${visibleImportantLandmarks.length}/8 important landmarks visible`);
+      }
+
+      updateLandmarks(landmarks, timestamp);
+      landmarkHistory.current.push(landmarks);
+      
+      // メモリ使用量制限
+      if (landmarkHistory.current.length > 300) {
+        landmarkHistory.current.shift();
+      }
+
+      console.log(`📍 Landmarks: ${landmarks.length} points, History: ${landmarkHistory.current.length} frames`);
+    } catch (err) {
+      console.error('❌ Error in handleLandmarkResults:', err);
+      setError(`ランドマーク処理エラー: ${err}`);
     }
   }, [updateLandmarks]);
 
+  // MediaPipe初期化
   useEffect(() => {
     const initialize = async () => {
+      if (isInitializing) return;
+      
+      console.log('🚀 Starting MediaPipe initialization...');
+      setIsInitializing(true);
+      setError(null);
+      
       try {
         poseLandmarkerService.current = new PoseLandmarkerService();
+        console.log('📦 PoseLandmarkerService created');
+        
         await poseLandmarkerService.current.initialize();
+        console.log('✅ MediaPipe initialized successfully');
         setIsModelReady(true);
       } catch (error) {
-        console.error('Failed to initialize Pose Landmarker:', error);
-      }
-    };
-    initialize();
-    return () => {
-      if (poseLandmarkerService.current) poseLandmarkerService.current.close();
-      if (rafId.current) cancelAnimationFrame(rafId.current);
-    };
-  }, []);
-
-  // ★★★「白飛び」を解決する、最も重要な修正箇所 ★★★
-  useEffect(() => {
-    // 実行中でない、または準備ができていない場合は、ループを完全に停止する
-    if (testStatus !== 'running' || !isModelReady || !videoElement || !poseLandmarkerService.current) {
-      if (rafId.current) cancelAnimationFrame(rafId.current);
-      return;
-    }
-
-    poseLandmarkerService.current.setResultCallback(handleLandmarkResults);
-
-    const predictVideoFrame = () => {
-      // 外部の状態が変わったらループを止めるためのガード
-      if (useAppStore.getState().testStatus !== 'running' || !videoElement) return;
-
-      if (videoElement.videoWidth > 0) {
-        poseLandmarkerService.current?.processVideoFrame(videoElement, performance.now());
-      }
-      rafId.current = requestAnimationFrame(predictVideoFrame);
-    };
-
-    // 解析完了ハンドラ
-    const performFinalAnalysis = () => {
-      console.log('Performing final analysis...');
-      const state = useAppStore.getState();
-      const lastLandmarks = landmarkHistory.current.at(-1);
-      if (state.currentTest && lastLandmarks) {
-        const analyzer = analyzers.current[state.currentTest];
-        const result = analyzer.analyze(lastLandmarks, landmarkHistory.current);
-        completeTest(result);
-      } else {
-        stopTest(); // データがなければ単純に停止
+        console.error('❌ Failed to initialize Pose Landmarker:', error);
+        setError(`MediaPipe初期化エラー: ${error instanceof Error ? error.message : String(error)}`);
+        setIsModelReady(false);
+      } finally {
+        setIsInitializing(false);
       }
     };
     
-    const isVideoFile = videoElement.src && videoElement.src.startsWith('blob:');
-    if (isVideoFile) {
-      // 動画ファイルの場合: 'ended'イベントで完了
-      videoElement.addEventListener('ended', performFinalAnalysis, { once: true });
-    } else {
-      // ウェブカメラの場合: 5秒のタイムアウトで完了
-      const timeoutId = setTimeout(performFinalAnalysis, 5000);
-      return () => clearTimeout(timeoutId);
+    initialize();
+    
+    return () => {
+      console.log('🧹 Cleaning up MediaPipe resources...');
+      if (poseLandmarkerService.current) {
+        try {
+          poseLandmarkerService.current.close();
+        } catch (err) {
+          console.error('Error closing poseLandmarkerService:', err);
+        }
+      }
+      if (rafId.current) {
+        cancelAnimationFrame(rafId.current);
+      }
+    };
+  }, []);
+
+  // 解析ループの管理
+  useEffect(() => {
+    console.log(`🎬 Analysis Effect - Status: ${testStatus}, Model: ${isModelReady}, Video: ${!!videoElement}`);
+    
+    // 実行中でない、または準備ができていない場合は、ループを完全に停止する
+    if (testStatus !== 'running' || !isModelReady || !videoElement || !poseLandmarkerService.current) {
+      console.log('🛑 Stopping analysis loop');
+      if (rafId.current) {
+        cancelAnimationFrame(rafId.current);
+        rafId.current = null;
+      }
+      return;
     }
 
-    // ループ開始
-    predictVideoFrame();
+    console.log('▶️ Starting analysis loop...');
+    setError(null);
+    
+    try {
+      poseLandmarkerService.current.setResultCallback(handleLandmarkResults);
 
-    return () => {
-      if (rafId.current) cancelAnimationFrame(rafId.current);
-      if (isVideoFile) videoElement.removeEventListener('ended', performFinalAnalysis);
-    };
+      const predictVideoFrame = () => {
+        try {
+          // 状態チェック
+          const currentStatus = useAppStore.getState().testStatus;
+          if (currentStatus !== 'running' || !videoElement) {
+            console.log('🔄 Loop guard triggered - stopping');
+            return;
+          }
+
+          // ビデオの準備チェック
+          if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
+            if (videoElement.readyState >= 2) { // HAVE_CURRENT_DATA
+              poseLandmarkerService.current?.processVideoFrame(videoElement, performance.now());
+            }
+          } else {
+            console.log('⏳ Video not ready yet...');
+          }
+          
+          rafId.current = requestAnimationFrame(predictVideoFrame);
+        } catch (err) {
+          console.error('❌ Error in predictVideoFrame:', err);
+          setError(`フレーム処理エラー: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      };
+
+      // 解析完了ハンドラ
+      const performFinalAnalysis = () => {
+        console.log('🏁 Performing final analysis...');
+        try {
+          const state = useAppStore.getState();
+          const lastLandmarks = landmarkHistory.current.at(-1);
+          
+          if (state.currentTest && lastLandmarks && landmarkHistory.current.length > 0) {
+            console.log(`📊 Analyzing ${landmarkHistory.current.length} frames for ${state.currentTest}`);
+            const analyzer = analyzers.current[state.currentTest];
+            const result = analyzer.analyze(lastLandmarks, landmarkHistory.current);
+            console.log('📈 Analysis result:', result);
+            completeTest(result);
+          } else {
+            console.log('📭 No sufficient data to analyze');
+            if (landmarkHistory.current.length === 0) {
+              setError('解析用のデータが収集されませんでした。カメラの位置や照明を確認してください。');
+            }
+            stopTest();
+          }
+        } catch (err) {
+          console.error('❌ Error in final analysis:', err);
+          setError(`解析エラー: ${err instanceof Error ? err.message : String(err)}`);
+          stopTest();
+        }
+      };
+      
+      const isVideoFile = videoElement.src && videoElement.src.startsWith('blob:');
+      console.log(`📹 Video type: ${isVideoFile ? 'File' : 'Webcam'}`);
+      
+      if (isVideoFile) {
+        // 動画ファイルの場合: 'ended'イベントで完了
+        videoElement.addEventListener('ended', performFinalAnalysis, { once: true });
+        console.log('🎬 Video file analysis setup complete');
+      } else {
+        // ウェブカメラの場合: 5秒のタイムアウトで完了
+        const timeoutId = setTimeout(() => {
+          console.log('⏰ Webcam analysis timeout reached');
+          performFinalAnalysis();
+        }, 5000);
+        
+        return () => {
+          console.log('⏰ Clearing webcam timeout');
+          clearTimeout(timeoutId);
+        };
+      }
+
+      // ループ開始
+      console.log('🎯 Starting prediction loop');
+      predictVideoFrame();
+
+      return () => {
+        console.log('🛑 Cleaning up analysis effect');
+        if (rafId.current) {
+          cancelAnimationFrame(rafId.current);
+          rafId.current = null;
+        }
+        if (isVideoFile) {
+          videoElement.removeEventListener('ended', performFinalAnalysis);
+        }
+      };
+    } catch (err) {
+      console.error('❌ Error setting up analysis:', err);
+      setError(`セットアップエラー: ${err instanceof Error ? err.message : String(err)}`);
+    }
   }, [isModelReady, videoElement, testStatus, handleLandmarkResults, completeTest, stopTest]);
 
+  // テスト状態のリセット
   useEffect(() => {
     if (testStatus === 'idle') {
+      console.log('🔄 Resetting landmark history');
       landmarkHistory.current = [];
+      setError(null);
     }
   }, [testStatus]);
 
-  return { isModelReady };
+  return { 
+    isModelReady, 
+    error, 
+    isInitializing,
+    landmarkCount: landmarkHistory.current.length 
+  };
 };

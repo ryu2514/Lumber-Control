@@ -1,0 +1,242 @@
+/* Global app styles */
+
+:root {
+  --primary-color: #3498db;
+  --secondary-color: #2ecc71;
+  --accent-color: #e74c3c;
+  --text-color: #333;
+  --background-color: #f5f5f5;
+  --card-background: #ffffff;
+  --border-radius: 8px;
+  --shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Helvetica Neue', Arial, sans-serif;
+  line-height: 1.6;
+  color: var(--text-color);
+  background-color: var(--background-color);
+}
+
+.App {
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* Test Analysis View Styles */
+.test-analysis-view {
+  display: flex;
+  flex-direction: column;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+.app-header {
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.app-header h1 {
+  color: var(--primary-color);
+  margin-bottom: 1rem;
+}
+
+.test-selector {
+  margin-top: 1.5rem;
+}
+
+.test-buttons {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+}
+
+.test-button {
+  padding: 10px 15px;
+  background-color: var(--card-background);
+  border: 1px solid var(--primary-color);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.test-button:hover {
+  background-color: rgba(52, 152, 219, 0.1);
+}
+
+.test-button.active {
+  background-color: var(--primary-color);
+  color: white;
+}
+
+.test-content {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 20px;
+}
+
+@media (min-width: 768px) {
+  .test-content {
+    grid-template-columns: 3fr 2fr;
+  }
+}
+
+.camera-section {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.video-container {
+  width: 100%;
+  background-color: #000;
+  border-radius: var(--border-radius);
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+}
+
+.camera-view {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.camera-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.error-message {
+  color: var(--accent-color);
+  text-align: center;
+  padding: 20px;
+}
+
+.test-controls {
+  display: flex;
+  justify-content: center;
+  margin-top: 15px;
+}
+
+.start-button, .reset-button {
+  padding: 12px 24px;
+  font-size: 16px;
+  background-color: var(--secondary-color);
+  color: white;
+  border: none;
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.start-button:hover {
+  background-color: #27ae60;
+}
+
+.reset-button {
+  background-color: var(--primary-color);
+}
+
+.reset-button:hover {
+  background-color: #2980b9;
+}
+
+.start-button:disabled, .reset-button:disabled {
+  background-color: #95a5a6;
+  cursor: not-allowed;
+}
+
+.status-running {
+  padding: 12px 24px;
+  background-color: rgba(52, 152, 219, 0.2);
+  border-radius: var(--border-radius);
+  text-align: center;
+}
+
+.results-section {
+  background-color: var(--card-background);
+  border-radius: var(--border-radius);
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.no-results {
+  min-height: 200px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  color: #7f8c8d;
+}
+
+.test-results h3 {
+  margin-bottom: 15px;
+  color: var(--primary-color);
+  text-align: center;
+}
+
+.score-display {
+  display: flex;
+  justify-content: center;
+  margin: 20px 0;
+}
+
+.score-circle {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+
+.score-value {
+  font-size: 34px;
+  font-weight: bold;
+  color: var(--primary-color);
+}
+
+.metrics-list {
+  margin: 20px 0;
+}
+
+.metric-item {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #ecf0f1;
+}
+
+.metric-label {
+  font-weight: 500;
+}
+
+.feedback {
+  margin-top: 20px;
+  padding: 15px;
+  background-color: rgba(46, 204, 113, 0.1);
+  border-left: 4px solid var(--secondary-color);
+  border-radius: 4px;
+}
+
+.feedback h4 {
+  margin-bottom: 8px;
+  color: #27ae60;
+}
+
+.pose-overlay {
+  z-index: 10;
+}

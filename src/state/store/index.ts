@@ -3,19 +3,17 @@
 import { create } from 'zustand';
 import { Landmark, TestResult, TestType } from '../../types';
 
-// AppStateの型定義をまず行います
-// これにより、create<AppState>が正しく機能します
 interface AppState {
   currentTest: TestType | null;
   testStatus: 'idle' | 'running' | 'completed';
   landmarks: Landmark[] | null;
-  lastUpdated: number; // タイムスタンプを保持するプロパティを追加
+  lastUpdated: number;
   analysisResults: Partial<Record<TestType, TestResult>>;
   setCurrentTest: (test: TestType) => void;
   startTest: () => void;
-  stopTest: () => void; // stopTestの型定義を追加
+  stopTest: () => void;
   resetTest: () => void;
-  updateLandmarks: (landmarks: Landmark[], timestamp: number) => void; // timestampを受け取るように変更
+  updateLandmarks: (landmarks: Landmark[], timestamp: number) => void;
   completeTest: (result: TestResult) => void;
 }
 
@@ -24,27 +22,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   currentTest: null,
   testStatus: 'idle',
   landmarks: null,
-  lastUpdated: 0, // lastUpdatedの初期値を追加
+  lastUpdated: 0,
   analysisResults: {},
 
   // Actions
   setCurrentTest: (test: TestType) =>
     set({
       currentTest: test,
-      testStatus: 'idle', // テストを変更したらステータスをリセット
+      testStatus: 'idle',
       landmarks: null,
       analysisResults: {},
     }),
 
   startTest: () => {
     const { currentTest } = get();
-    if (!currentTest) {
-      console.error('Cannot start test: No test selected');
-      return;
-    }
+    if (!currentTest) return;
+
     set((state) => ({
       testStatus: 'running',
-      landmarks: null,
+      // landmarks: null, // ← この行を削除！ちらつきを防ぎます
       analysisResults: {
         ...state.analysisResults,
         [currentTest]: undefined,
@@ -52,14 +48,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
 
-  // stopTest関数をここに追加
   stopTest: () => {
-    // 実行中でなければ何もしない
     if (get().testStatus !== 'running') return;
     set({ testStatus: 'completed' });
   },
 
-  // updateLandmarksをtimestampを受け取れるように修正
   updateLandmarks: (newLandmarks: Landmark[], timestamp: number) => {
     set({ landmarks: newLandmarks, lastUpdated: timestamp });
   },

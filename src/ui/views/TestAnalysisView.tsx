@@ -139,12 +139,13 @@ export const TestAnalysisView: React.FC = () => {
 
             {/* ★★★【最重要】骨格の線（PoseOverlay）をここに配置します！ ★★★ */}
             {landmarks && videoSize.width > 0 && (
-              <PoseOverlay
-                landmarks={landmarks}
-                videoWidth={videoSize.width}
-                videoHeight={videoSize.height}
-              />
-            )}
+  <PoseOverlay
+    landmarks={landmarks}
+    videoWidth={videoSize.width}
+    videoHeight={videoSize.height}
+    isMirrored={!videoSrc} // ★★★ この一行を追加！ ★★★
+  />
+)}
           </div>
 
           <div className="test-controls">

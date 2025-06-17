@@ -1,4 +1,4 @@
-// src/ui/views/TestAnalysisView.tsx (完成版)
+// src/ui/views/TestAnalysisView.tsx (最終完成版)
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { CameraView } from '../components/CameraView';
@@ -56,12 +56,15 @@ export const TestAnalysisView: React.FC = () => {
         });
       };
       videoElement.addEventListener('loadedmetadata', updateSize);
-      if (videoElement.videoWidth) updateSize();
-      return () => videoElement.removeEventListener('loadedmetadata', updateSize);
+      if (videoElement.videoWidth) {
+        updateSize();
+      }
+      return () => {
+        videoElement.removeEventListener('loadedmetadata', updateSize);
+      };
     }
   }, [videoElement]);
 
-  // ★★★「パチパチ」問題の対策：useCallbackで関数をメモ化★★★
   const handleVideoElement = useCallback((video: HTMLVideoElement) => {
     setVideoElement(video);
   }, []);
@@ -76,32 +79,6 @@ export const TestAnalysisView: React.FC = () => {
 
   const currentTestResult = currentTest ? analysisResults[currentTest] : undefined;
   const exampleImageSrc = currentTest ? exampleImages[currentTest] : null;
-
-  return (
-    <div className="test-analysis-view">
-      <header className="app-header">{/* ... */}</header>
-      <div className="my-4 text-center">{/* ... */}</div>
-
-      <main className="test-content">
-        {/* ★★★ レイアウト崩れ防止 ★★★ */}
-        <div className="camera-section w-full max-w-3xl mx-auto">
-          <div className="video-container relative w-full aspect-video bg-black rounded-lg overflow-hidden">
-            {videoSrc ? (
-              <video ref={videoRefForUpload} src={videoSrc} className="w-full h-full object-contain" controls onLoadedData={() => setVideoElement(videoRefForUpload.current)} />
-            ) : (
-              <CameraView onVideoElement={handleVideoElement} />
-            )}
-            {landmarks && videoSize.width > 0 && (
-              <PoseOverlay landmarks={landmarks} videoWidth={videoSize.width} videoHeight={videoSize.height} isMirrored={!videoSrc} />
-            )}
-          </div>
-          <div className="test-controls">{/* ... */}</div>
-        </div>
-        <div className="results-section">{/* ... */}</div>
-      </main>
-    </div>
-  );
-};
 
   return (
     <div className="test-analysis-view">
@@ -142,13 +119,13 @@ export const TestAnalysisView: React.FC = () => {
       </div>
 
       <main className="test-content">
-        <div className="camera-section">
-          <div className="video-container" style={{ position: 'relative' }}>
+        <div className="camera-section w-full max-w-3xl mx-auto">
+          <div className="video-container relative w-full aspect-video bg-black rounded-lg overflow-hidden">
             {videoSrc ? (
               <video
                 ref={videoRefForUpload}
                 src={videoSrc}
-                className="w-full h-auto"
+                className="w-full h-full object-contain"
                 controls
                 onLoadedData={() => setVideoElement(videoRefForUpload.current)}
               />

@@ -1,4 +1,4 @@
-// src/ui/components/PoseOverlay.tsx (最終修正版)
+// src/ui/components/PoseOverlay.tsx (エラー修正版)
 
 import React from 'react';
 import { Landmark } from '../../types';
@@ -20,13 +20,33 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
   containerHeight,
   isMirrored = false,
 }) => {
+  console.log('🎨 PoseOverlay render:', {
+    landmarksCount: landmarks?.length,
+    videoSize: { width: videoWidth, height: videoHeight },
+    containerSize: { width: containerWidth, height: containerHeight },
+    isMirrored,
+    firstLandmark: landmarks?.[0],
+  });
+
   if (!landmarks || landmarks.length === 0 || videoWidth === 0 || videoHeight === 0) {
+    console.log('❌ PoseOverlay: Missing data', {
+      hasLandmarks: !!landmarks,
+      landmarksLength: landmarks?.length,
+      videoWidth,
+      videoHeight,
+    });
     return null;
   }
 
   // 表示サイズを計算（containerサイズが指定されている場合はそれを使用）
   const displayWidth = containerWidth || videoWidth;
   const displayHeight = containerHeight || videoHeight;
+  
+  console.log('📐 Display calculations:', {
+    displayWidth,
+    displayHeight,
+    containerProvided: !!containerWidth,
+  });
 
   // ランドマークの座標を変換する関数
   const transformLandmark = (landmark: Landmark) => {
@@ -83,15 +103,46 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
     importantLandmarks.includes(index)
   );
 
+  console.log('👁️ Visible landmarks:', {
+    total: landmarks.length,
+    important: importantLandmarks.length,
+    visible: visibleLandmarks.length,
+    visibleDetails: visibleLandmarks.map((landmark) => ({
+      index: importantLandmarks.find(i => landmarks[i] === landmark),
+      visibility: landmark.visibility,
+      coords: { x: landmark.x, y: landmark.y }
+    })),
+  });
+
   return (
     <svg
       className="absolute inset-0 w-full h-full pointer-events-none"
       style={{
         width: displayWidth,
         height: displayHeight,
+        border: '2px solid red', // デバッグ用の境界線
+        zIndex: 10, // 前面に表示
       }}
       viewBox={`0 0 ${displayWidth} ${displayHeight}`}
     >
+      {/* デバッグ用の背景 */}
+      <rect 
+        width={displayWidth} 
+        height={displayHeight} 
+        fill="rgba(255,0,0,0.1)" 
+      />
+      
+      {/* デバッグ情報テキスト */}
+      <text
+        x={10}
+        y={30}
+        fill="#ff0000"
+        fontSize="14"
+        fontWeight="bold"
+      >
+        Debug: {landmarks.length} landmarks, {visibleLandmarks.length} visible
+      </text>
+      
       {/* 接続線を描画 */}
       {connections.map(([startIdx, endIdx], connectionIndex) => {
         const startLandmark = landmarks[startIdx];
@@ -105,6 +156,8 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
         const start = transformLandmark(startLandmark);
         const end = transformLandmark(endLandmark);
         
+        console.log(`🔗 Drawing connection ${connectionIndex}:`, { start, end });
+        
         return (
           <line
             key={`connection-${connectionIndex}`}
@@ -113,8 +166,8 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
             x2={end.x}
             y2={end.y}
             stroke="#00ff00"
-            strokeWidth="2"
-            opacity="0.7"
+            strokeWidth="3"
+            opacity="0.8"
           />
         );
       })}
@@ -125,7 +178,9 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
         if (originalIndex === undefined) return null;
         
         const point = transformLandmark(landmark);
-        const radius = Math.max(3, Math.min(displayWidth, displayHeight) * 0.008); // レスポンシブなサイズ
+        const radius = Math.max(5, Math.min(displayWidth, displayHeight) * 0.015); // より大きなサイズ
+        
+        console.log(`⭕ Drawing landmark ${originalIndex}:`, { point, radius });
         
         // ランドマークの種類に応じて色を変更
         let color = '#ff0000'; // デフォルト：赤
@@ -142,9 +197,9 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
             cy={point.y}
             r={radius}
             fill={color}
-            opacity="0.8"
+            opacity="1"
             stroke="#ffffff"
-            strokeWidth="1"
+            strokeWidth="2"
           />
         );
       })}
@@ -153,10 +208,10 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
       {visibleLandmarks.length < 6 && (
         <text
           x={displayWidth / 2}
-          y={30}
+          y={60}
           textAnchor="middle"
           fill="#ff0000"
-          fontSize={Math.max(12, displayWidth * 0.025)}
+          fontSize="16"
           fontWeight="bold"
         >
           ⚠️ 姿勢検出の精度が低下しています
@@ -166,10 +221,12 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
       {/* ランドマーク数の表示（デバッグ用） */}
       <text
         x={10}
-        y={displayHeight - 10}
+        y={displayHeight - 20}
         fill="#ffffff"
-        fontSize={Math.max(10, displayWidth * 0.02)}
-        opacity="0.7"
+        fontSize="14"
+        opacity="1"
+        stroke="#000000"
+        strokeWidth="1"
       >
         検出点: {visibleLandmarks.length}/{importantLandmarks.length}
       </text>

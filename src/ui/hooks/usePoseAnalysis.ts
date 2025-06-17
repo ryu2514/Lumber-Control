@@ -1,4 +1,4 @@
-// src/ui/hooks/usePoseAnalysis.ts (更新版)
+// src/ui/hooks/usePoseAnalysis.ts (デバッグ強化版)
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { PoseLandmarkerService } from '../../inference/mediapipe/poseLandmarkerService';
@@ -31,12 +31,18 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
 
   const handleLandmarkResults = useCallback((landmarks: Landmark[], timestamp: number) => {
     try {
+      console.log('🔍 handleLandmarkResults called with:', {
+        landmarksCount: landmarks?.length,
+        timestamp,
+        firstLandmark: landmarks?.[0],
+      });
+
       if (!landmarks || landmarks.length === 0) {
-        console.warn('Empty landmarks received');
+        console.warn('⚠️ Empty landmarks received');
         return;
       }
 
-      const importantLandmarks = [11, 12, 23, 24, 25, 26, 27, 28, 0, 15, 16]; // 肩、腰、膝、足首、鼻、手首
+      const importantLandmarks = [11, 12, 23, 24, 25, 26, 27, 28, 0, 15, 16];
       const visibleImportantLandmarks = importantLandmarks.filter(
         index => {
           const landmark = landmarks[index];
@@ -44,18 +50,23 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
         }
       );
 
-      if (visibleImportantLandmarks.length < 6) {
-        console.warn(`Only ${visibleImportantLandmarks.length}/${importantLandmarks.length} important landmarks visible`);
-      }
+      console.log('👁️ Visibility check:', {
+        total: importantLandmarks.length,
+        visible: visibleImportantLandmarks.length,
+        visibleIndexes: visibleImportantLandmarks,
+      });
 
+      // ここが重要: storeを更新
       updateLandmarks(landmarks, timestamp);
+      console.log('✅ updateLandmarks called successfully');
+
       landmarkHistory.current.push(landmarks);
       
       if (landmarkHistory.current.length > 300) {
         landmarkHistory.current.shift();
       }
 
-      console.log(`📍 Landmarks: ${landmarks.length} points, History: ${landmarkHistory.current.length} frames`);
+      console.log(`📍 Updated: ${landmarks.length} landmarks, History: ${landmarkHistory.current.length} frames`);
     } catch (err) {
       console.error('❌ Error in handleLandmarkResults:', err);
       setError(`ランドマーク処理エラー: ${err}`);
@@ -119,6 +130,8 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
     setError(null);
     
     try {
+      // コールバック設定の確認
+      console.log('🔗 Setting result callback');
       poseLandmarkerService.current.setResultCallback(handleLandmarkResults);
 
       const predictVideoFrame = () => {
@@ -131,10 +144,13 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
 
           if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
             if (videoElement.readyState >= 2) {
+              console.log('🎥 Processing video frame...');
               poseLandmarkerService.current?.processVideoFrame(videoElement, performance.now());
+            } else {
+              console.log('⏳ Video not ready (readyState:', videoElement.readyState, ')');
             }
           } else {
-            console.log('⏳ Video not ready yet...');
+            console.log('⏳ Video dimensions not available:', videoElement.videoWidth, 'x', videoElement.videoHeight);
           }
           
           rafId.current = requestAnimationFrame(predictVideoFrame);
@@ -150,8 +166,14 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
           const state = useAppStore.getState();
           const lastLandmarks = landmarkHistory.current.at(-1);
           
+          console.log('📊 Final analysis data:', {
+            currentTest: state.currentTest,
+            historyLength: landmarkHistory.current.length,
+            hasLastLandmarks: !!lastLandmarks,
+          });
+          
           if (state.currentTest && lastLandmarks && landmarkHistory.current.length > 0) {
-            console.log(`📊 Analyzing ${landmarkHistory.current.length} frames for ${state.currentTest}`);
+            console.log(`📈 Analyzing ${landmarkHistory.current.length} frames for ${state.currentTest}`);
             const analyzer = analyzers.current[state.currentTest];
             const result = analyzer.analyze(lastLandmarks, landmarkHistory.current);
             console.log('📈 Analysis result:', result);
@@ -180,7 +202,7 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
         const timeoutId = setTimeout(() => {
           console.log('⏰ Webcam analysis timeout reached');
           performFinalAnalysis();
-        }, 8000); // 腰椎コントロール評価のため少し長めに設定
+        }, 8000);
         
         return () => {
           console.log('⏰ Clearing webcam timeout');

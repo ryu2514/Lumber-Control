@@ -1,9 +1,17 @@
-// src/ui/components/PoseOverlay.tsx (完成版)
+// src/ui/components/PoseOverlay.tsx (最終完成版)
 
 import React, { useEffect, useRef } from 'react';
-// ...他のimport...
+import { Landmark } from '../../types';
+import { drawConnectors, drawLandmarks } from '@mediapipe/drawing_utils';
+import { POSE_CONNECTIONS } from '@mediapipe/pose';
 
-// ...interface PoseOverlayProps...
+// interfaceがなかったので追加します
+interface PoseOverlayProps {
+  landmarks: Landmark[];
+  videoWidth: number;
+  videoHeight: number;
+  isMirrored?: boolean;
+}
 
 // React.memoでコンポーネントを囲みます
 export const PoseOverlay: React.FC<PoseOverlayProps> = React.memo(({
@@ -14,7 +22,39 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = React.memo(({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // ...useEffectの中身はそのまま...
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    // Clear canvas
+    ctx.clearRect(0, 0, videoWidth, videoHeight);
+
+    // 描画を反転させるロジック
+    if (isMirrored) {
+      ctx.save();
+      ctx.translate(videoWidth, 0);
+      ctx.scale(-1, 1);
+    }
+
+    // Draw connectors
+    drawConnectors(ctx, landmarks, POSE_CONNECTIONS, {
+      color: '#00FF00',
+      lineWidth: 2,
+    });
+
+    // Draw landmarks
+    drawLandmarks(ctx, landmarks, {
+      color: '#FF0000',
+      radius: 3,
+    });
+
+    if (isMirrored) {
+      ctx.restore();
+    }
+  }, [landmarks, videoWidth, videoHeight, isMirrored]);
 
   return (
     <canvas

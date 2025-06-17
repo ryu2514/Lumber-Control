@@ -136,3 +136,32 @@ function calculateTotalRange(positions: number[][]): number {
   
   return totalRange / dimensions;
 }
+// src/inference/utils/mathUtils.ts の一番下に追加
+
+/**
+ * Calculates the smoothness of a series of movements.
+ * A higher score (closer to 100) indicates smoother movement.
+ * @param data - An array of numbers representing a changing value over time.
+ * @returns A smoothness score from 0 to 100.
+ */
+export const calculateMovementSmoothness = (data: number[]): number => {
+  if (data.length < 3) {
+    return 50; // Not enough data for analysis
+  }
+
+  // Calculate the second derivative (jerk) of the movement
+  const jerks = [];
+  for (let i = 1; i < data.length - 1; i++) {
+    const jerk = (data[i + 1] - 2 * data[i] + data[i - 1]);
+    jerks.push(jerk);
+  }
+
+  // Calculate the average magnitude of the jerk
+  const averageJerk = jerks.reduce((sum, val) => sum + Math.abs(val), 0) / jerks.length;
+  
+  // Normalize and scale to a 0-100 score.
+  // The scaling factor (e.g., 1000) might need tuning based on expected data range.
+  const score = 100 - Math.min(100, averageJerk * 1000);
+  
+  return score;
+};

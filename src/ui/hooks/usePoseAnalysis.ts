@@ -20,7 +20,12 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
     [TestType.SINGLE_LEG_STANCE]: new SingleLegStanceAnalyzer(),
   });
 
-  const { currentTest, testStatus, updateLandmarks, completeTest, stopTest } = useAppStore();
+  const { 
+  testStatus, 
+  updateLandmarks, 
+  completeTest, 
+  stopTest 
+} = useAppStore();
 
   const handleLandmarkResults = useCallback((landmarks: Landmark[], timestamp: number) => {
     // 常にランドマークのデータは更新するが、UIへの反映はストアに任せる

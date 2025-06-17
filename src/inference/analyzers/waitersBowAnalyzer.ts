@@ -9,7 +9,7 @@ export class WaitersBowAnalyzer extends BaseAnalyzer {
     super(TestType.WAITERS_BOW);
   }
 
-  analyze(landmarks: Landmark[], landmarkHistory: Landmark[][] = []): TestResult {
+  analyze(landmarkHistory: Landmark[][] = []): TestResult {
     if (landmarkHistory.length === 0) {
       // データがない場合はデフォルト値を返す
       return this.createBaseResult(0, {}, "解析データが不足しています。");

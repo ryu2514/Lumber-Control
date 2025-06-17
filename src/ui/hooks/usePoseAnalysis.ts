@@ -1,12 +1,13 @@
-// src/ui/hooks/usePoseAnalysis.ts (タイムスタンプ修正版)
+// src/ui/hooks/usePoseAnalysis.ts (TensorFlow.js runtime版)
 
 import { useEffect, useRef, useState } from 'react';
-import { PoseLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
+import * as poseDetection from '@tensorflow-models/pose-detection';
+import '@tensorflow/tfjs-backend-webgl';
 import { Landmark } from '../../types';
 import { useAppStore } from '../../state/store';
 
 export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
-  const [poseLandmarker, setPoseLandmarker] = useState<PoseLandmarker | null>(null);
+  const [detector, setDetector] = useState<poseDetection.PoseDetector | null>(null);
   const [isModelReady, setIsModelReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
@@ -15,7 +16,6 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
   const animationFrameRef = useRef<number>();
   const frameCountRef = useRef(0);
   const startTimeRef = useRef(0);
-  const lastTimestampRef = useRef(0); // MediaPipeタイムスタンプ管理
   
   const { 
     testStatus, 
@@ -23,55 +23,44 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
     updateLandmarks
   } = useAppStore();
 
-  // MediaPipe初期化（runtime = mediapipe明示）
+  // TensorFlow.js BlazePose初期化
   useEffect(() => {
     let isMounted = true;
     
-    const initializePoseLandmarker = async () => {
+    const initializePoseDetector = async () => {
       try {
         setError(null);
         setIsInitializing(true);
         
-        console.log('🚀 MediaPipe初期化開始...');
+        console.log('🚀 TensorFlow.js BlazePose初期化開始...');
         
-        const vision = await FilesetResolver.forVisionTasks(
-          'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
-        );
+        const model = poseDetection.SupportedModels.BlazePose;
+        const detectorConfig = {
+          runtime: 'tfjs' as const,
+          modelType: 'lite' as const,
+          enableSmoothing: true,
+          enableSegmentation: false
+        };
         
-        if (!isMounted) return;
-        
-        console.log('📦 MediaPipe Wasmロード完了');
-        
-        const landmarker = await PoseLandmarker.createFromOptions(vision, {
-          baseOptions: {
-            modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
-            delegate: 'GPU'
-          },
-          runningMode: 'VIDEO',
-          numPoses: 1,
-          minPoseDetectionConfidence: 0.5,
-          minPosePresenceConfidence: 0.5,
-          minTrackingConfidence: 0.5,
-          outputSegmentationMasks: false
-        });
+        const poseDetector = await poseDetection.createDetector(model, detectorConfig);
         
         if (!isMounted) return;
         
-        console.log('✅ PoseLandmarker初期化完了');
-        setPoseLandmarker(landmarker);
+        console.log('✅ TensorFlow.js BlazePose初期化完了');
+        setDetector(poseDetector);
         setIsModelReady(true);
         setIsInitializing(false);
         
       } catch (err) {
-        console.error('❌ MediaPipe初期化エラー:', err);
+        console.error('❌ TensorFlow.js BlazePose初期化エラー:', err);
         if (isMounted) {
-          setError(`MediaPipeの初期化に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
+          setError(`TensorFlow.js BlazePoseの初期化に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
           setIsInitializing(false);
         }
       }
     };
 
-    initializePoseLandmarker();
+    initializePoseDetector();
     
     return () => {
       isMounted = false;
@@ -83,7 +72,7 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
 
   // ビデオ解析ループ
   useEffect(() => {
-    if (!poseLandmarker || !videoElement || testStatus !== 'running') {
+    if (!detector || !videoElement || testStatus !== 'running') {
       return;
     }
 
@@ -91,7 +80,7 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
 
     const detectPose = async () => {
       try {
-        if (!videoElement || !poseLandmarker || testStatus !== 'running') {
+        if (!videoElement || !detector || testStatus !== 'running') {
           return;
         }
 
@@ -107,39 +96,28 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
             return;
           }
 
-          // MediaPipe用の単調増加タイムスタンプを生成
-          const currentTimestamp = performance.now();
-          
-          // タイムスタンプが前回より大きいことを保証
-          if (currentTimestamp <= lastTimestampRef.current) {
-            lastTimestampRef.current += 1; // 最小限増加
-          } else {
-            lastTimestampRef.current = currentTimestamp;
-          }
+          console.log('🎬 TensorFlow.js pose detection...');
 
-          console.log('🎬 MediaPipe timestamp:', lastTimestampRef.current);
-
-          const results = await poseLandmarker.detectForVideo(videoElement, lastTimestampRef.current);
+          const poses = await detector.estimatePoses(videoElement);
           
-          if (results.landmarks && results.landmarks.length > 0) {
-            const detectedLandmarks: Landmark[] = results.landmarks[0].map(landmark => ({
-              x: landmark.x,
-              y: landmark.y,
-              z: landmark.z || 0,
-              visibility: landmark.visibility || 1.0
+          if (poses && poses.length > 0 && poses[0].keypoints) {
+            const detectedLandmarks: Landmark[] = poses[0].keypoints.map(keypoint => ({
+              x: keypoint.x / videoElement.videoWidth,  // 正規化（0-1）
+              y: keypoint.y / videoElement.videoHeight, // 正規化（0-1）
+              z: 0, // 2Dモードでは0
+              visibility: keypoint.score || 1.0
             }));
             
-            // アプリ用のタイムスタンプ（別管理）
-            const appTimestamp = Date.now();
-            updateLandmarks(detectedLandmarks, appTimestamp);
+            // アプリ用のタイムスタンプ
+            const timestamp = Date.now();
+            updateLandmarks(detectedLandmarks, timestamp);
             
-            console.log('✅ ランドマーク検出:', detectedLandmarks.length + '個');
+            console.log('✅ TensorFlow.js ランドマーク検出:', detectedLandmarks.length + '個');
           }
 
           // 10秒でテスト終了
           const elapsed = Date.now() - startTimeRef.current;
           if (elapsed > 10000) {
-            // 自動的にテスト完了（ストア内で処理される）
             console.log('✅ テスト完了（10秒経過）');
             return;
           }
@@ -147,7 +125,7 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
         
         animationFrameRef.current = requestAnimationFrame(detectPose);
       } catch (err) {
-        console.error('🔴 Pose detection error:', err);
+        console.error('🔴 TensorFlow.js Pose detection error:', err);
         setError(`ポーズ検出中にエラーが発生しました: ${err instanceof Error ? err.message : String(err)}`);
       }
     };
@@ -155,7 +133,6 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
     if (testStatus === 'running') {
       startTimeRef.current = Date.now();
       frameCountRef.current = 0;
-      lastTimestampRef.current = 0; // タイムスタンプリセット
       detectPose();
     }
 
@@ -164,7 +141,7 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [poseLandmarker, videoElement, testStatus, currentTest, updateLandmarks]);
+  }, [detector, videoElement, testStatus, currentTest, updateLandmarks]);
 
   return {
     isModelReady,

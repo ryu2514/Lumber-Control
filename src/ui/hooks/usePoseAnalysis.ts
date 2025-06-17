@@ -1,4 +1,4 @@
-// src/ui/hooks/usePoseAnalysis.ts (useRef修正版)
+// src/ui/hooks/usePoseAnalysis.ts (タイムスタンプ修正版)
 
 import { useEffect, useRef, useState } from 'react';
 import { PoseLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
@@ -15,6 +15,7 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
   const animationFrameRef = useRef<number>();
   const frameCountRef = useRef(0);
   const startTimeRef = useRef(0);
+  const lastTimestampRef = useRef(0); // MediaPipeタイムスタンプ管理
   
   const { 
     testStatus, 
@@ -106,7 +107,19 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
             return;
           }
 
-          const results = await poseLandmarker.detectForVideo(videoElement, Date.now());
+          // MediaPipe用の単調増加タイムスタンプを生成
+          const currentTimestamp = performance.now();
+          
+          // タイムスタンプが前回より大きいことを保証
+          if (currentTimestamp <= lastTimestampRef.current) {
+            lastTimestampRef.current += 1; // 最小限増加
+          } else {
+            lastTimestampRef.current = currentTimestamp;
+          }
+
+          console.log('🎬 MediaPipe timestamp:', lastTimestampRef.current);
+
+          const results = await poseLandmarker.detectForVideo(videoElement, lastTimestampRef.current);
           
           if (results.landmarks && results.landmarks.length > 0) {
             const detectedLandmarks: Landmark[] = results.landmarks[0].map(landmark => ({
@@ -116,9 +129,11 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
               visibility: landmark.visibility || 1.0
             }));
             
-            // timestampを追加してupdateLandmarksを呼び出し
-            const timestamp = Date.now();
-            updateLandmarks(detectedLandmarks, timestamp);
+            // アプリ用のタイムスタンプ（別管理）
+            const appTimestamp = Date.now();
+            updateLandmarks(detectedLandmarks, appTimestamp);
+            
+            console.log('✅ ランドマーク検出:', detectedLandmarks.length + '個');
           }
 
           // 10秒でテスト終了
@@ -140,6 +155,7 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
     if (testStatus === 'running') {
       startTimeRef.current = Date.now();
       frameCountRef.current = 0;
+      lastTimestampRef.current = 0; // タイムスタンプリセット
       detectPose();
     }
 

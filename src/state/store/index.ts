@@ -1,14 +1,9 @@
-// src/state/store/index.ts (完成版)
+// src/state/store/index.ts (最終修正版)
 
 import { create } from 'zustand';
-import { Landmark, TestResult, TestType } from '../../types';
+import { Landmark, TestResult, TestType, AppState, TestStatus } from '../../types';
 
-interface AppState {
-  currentTest: TestType | null;
-  testStatus: 'idle' | 'running' | 'completed';
-  landmarks: Landmark[] | null;
-  lastUpdated: number;
-  analysisResults: Partial<Record<TestType, TestResult>>;
+interface AppActions {
   setCurrentTest: (test: TestType) => void;
   startTest: () => void;
   stopTest: () => void;
@@ -17,57 +12,55 @@ interface AppState {
   completeTest: (result: TestResult) => void;
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
+type AppStore = AppState & AppActions;
+
+export const useAppStore = create<AppStore>((set, get) => ({
   // State
   currentTest: null,
-  testStatus: 'idle',
+  testStatus: 'idle' as TestStatus,
   landmarks: null,
-  lastUpdated: 0,
-  analysisResults: {},
+  analysisResults: {} as Record<TestType, TestResult>,
 
   // Actions
-  setCurrentTest: (test: TestType) =>
-    set({
-      currentTest: test,
-      testStatus: 'idle',
-      landmarks: null,
-      analysisResults: {},
-    }),
+  setCurrentTest: (test: TestType) => {
+    set({ currentTest: test });
+  },
 
   startTest: () => {
     const { currentTest } = get();
-    if (!currentTest) return;
-
-    set((state) => ({
-      testStatus: 'running',
-      // landmarks: null, // ← この行を削除！ちらつきを防ぎます
-      analysisResults: {
-        ...state.analysisResults,
-        [currentTest]: undefined,
-      },
-    }));
+    if (currentTest) {
+      set({ 
+        testStatus: 'running',
+        landmarks: null 
+      });
+    }
   },
 
   stopTest: () => {
-    if (get().testStatus !== 'running') return;
-    set({ testStatus: 'completed' });
-  },
-
-  updateLandmarks: (newLandmarks: Landmark[], timestamp: number) => {
-    set({ landmarks: newLandmarks, lastUpdated: timestamp });
-  },
-
-  completeTest: (result: TestResult) => {
-    set((state) => ({
-      testStatus: 'completed',
-      analysisResults: {
-        ...state.analysisResults,
-        [result.testType]: result,
-      },
-    }));
+    set({ testStatus: 'idle' });
   },
 
   resetTest: () => {
-    set({ testStatus: 'idle', landmarks: null, analysisResults: {} });
+    set({ 
+      testStatus: 'idle',
+      landmarks: null 
+    });
+  },
+
+  updateLandmarks: (landmarks: Landmark[], _timestamp: number) => {
+    set({ landmarks });
+  },
+
+  completeTest: (result: TestResult) => {
+    const { currentTest, analysisResults } = get();
+    if (currentTest) {
+      set({
+        testStatus: 'completed',
+        analysisResults: {
+          ...analysisResults,
+          [currentTest]: result
+        }
+      });
+    }
   },
 }));

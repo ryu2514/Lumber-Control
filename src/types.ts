@@ -1,4 +1,4 @@
-// src/types.ts (修正版)
+// src/types.ts (更新版)
 
 export interface Landmark {
   x: number;

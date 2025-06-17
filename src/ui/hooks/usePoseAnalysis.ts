@@ -36,7 +36,7 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
         return;
       }
 
-      const importantLandmarks = [11, 12, 23, 24, 25, 26, 27, 28, 0]; // 肩、腰、膝、足首、鼻
+      const importantLandmarks = [11, 12, 23, 24, 25, 26, 27, 28, 0, 15, 16]; // 肩、腰、膝、足首、鼻、手首
       const visibleImportantLandmarks = importantLandmarks.filter(
         index => {
           const landmark = landmarks[index];
@@ -45,7 +45,7 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
       );
 
       if (visibleImportantLandmarks.length < 6) {
-        console.warn(`Only ${visibleImportantLandmarks.length}/9 important landmarks visible`);
+        console.warn(`Only ${visibleImportantLandmarks.length}/${importantLandmarks.length} important landmarks visible`);
       }
 
       updateLandmarks(landmarks, timestamp);

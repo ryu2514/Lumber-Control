@@ -1,4 +1,4 @@
-// src/ui/views/TestAnalysisView.tsx (モバイル対応版)
+// src/ui/views/TestAnalysisView.tsx (座標修正版)
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { CameraView } from '../components/CameraView';
@@ -43,7 +43,7 @@ const testDetails: Record<TestType, string[]> = {
 export const TestAnalysisView: React.FC = () => {
   const [videoElement, setVideoElement] = useState<HTMLVideoElement | null>(null);
   const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
-  const [displaySize, setDisplaySize] = useState({ width: 0, height: 0 });
+  const [containerRect, setContainerRect] = useState({ width: 0, height: 0, top: 0, left: 0 });
   const videoRefForUpload = useRef<HTMLVideoElement>(null);
   const videoContainerRef = useRef<HTMLDivElement>(null);
   const [videoSrc, setVideoSrc] = useState<string | null>(null);
@@ -73,71 +73,52 @@ export const TestAnalysisView: React.FC = () => {
 
   const { isModelReady, error, isInitializing } = usePoseAnalysis(videoElement);
 
-  // 動画サイズの更新
+  // コンテナとビデオのサイズを正確に取得
   useEffect(() => {
-    if (videoElement) {
-      const updateVideoSize = () => {
+    const updateSizes = () => {
+      if (videoElement && videoContainerRef.current) {
         const videoWidth = videoElement.videoWidth;
         const videoHeight = videoElement.videoHeight;
         
+        console.log('📐 Video actual size:', { videoWidth, videoHeight });
         setVideoSize({ width: videoWidth, height: videoHeight });
         
-        // 表示サイズを計算（コンテナサイズに基づく）
-        if (videoContainerRef.current && videoWidth && videoHeight) {
-          const container = videoContainerRef.current;
-          const containerWidth = container.clientWidth;
-          const containerHeight = container.clientHeight;
-          const aspectRatio = videoWidth / videoHeight;
-          
-          let displayWidth = containerWidth;
-          let displayHeight = containerWidth / aspectRatio;
-          
-          if (displayHeight > containerHeight) {
-            displayHeight = containerHeight;
-            displayWidth = containerHeight * aspectRatio;
-          }
-          
-          setDisplaySize({ width: displayWidth, height: displayHeight });
-        }
-      };
+        // コンテナの実際のサイズと位置を取得
+        const containerRect = videoContainerRef.current.getBoundingClientRect();
+        const videoRect = videoElement.getBoundingClientRect();
+        
+        console.log('📦 Container rect:', containerRect);
+        console.log('🎥 Video rect:', videoRect);
+        
+        setContainerRect({
+          width: videoRect.width,
+          height: videoRect.height,
+          top: videoRect.top - containerRect.top,
+          left: videoRect.left - containerRect.left,
+        });
+      }
+    };
+    
+    if (videoElement) {
+      videoElement.addEventListener('loadedmetadata', updateSizes);
+      videoElement.addEventListener('resize', updateSizes);
+      window.addEventListener('resize', updateSizes);
       
-      const updateDisplaySize = () => {
-        if (videoSize.width && videoSize.height && videoContainerRef.current) {
-          const container = videoContainerRef.current;
-          const containerWidth = container.clientWidth;
-          const containerHeight = container.clientHeight;
-          const aspectRatio = videoSize.width / videoSize.height;
-          
-          let displayWidth = containerWidth;
-          let displayHeight = containerWidth / aspectRatio;
-          
-          if (displayHeight > containerHeight) {
-            displayHeight = containerHeight;
-            displayWidth = containerHeight * aspectRatio;
-          }
-          
-          setDisplaySize({ width: displayWidth, height: displayHeight });
-        }
-      };
-      
-      videoElement.addEventListener('loadedmetadata', updateVideoSize);
-      videoElement.addEventListener('resize', updateVideoSize);
-      window.addEventListener('resize', updateDisplaySize);
-      
+      // 初回実行
       if (videoElement.videoWidth) {
-        updateVideoSize();
+        updateSizes();
       }
       
       return () => {
-        videoElement.removeEventListener('loadedmetadata', updateVideoSize);
-        videoElement.removeEventListener('resize', updateVideoSize);
-        window.removeEventListener('resize', updateDisplaySize);
+        videoElement.removeEventListener('loadedmetadata', updateSizes);
+        videoElement.removeEventListener('resize', updateSizes);
+        window.removeEventListener('resize', updateSizes);
       };
     }
-  }, [videoElement, videoSize.width, videoSize.height]);
+  }, [videoElement]);
 
   const handleVideoElement = useCallback((video: HTMLVideoElement) => {
-    console.log('Setting video element:', video);
+    console.log('🎬 Setting video element:', video);
     setVideoElement(video);
   }, []);
 
@@ -305,13 +286,13 @@ export const TestAnalysisView: React.FC = () => {
               <CameraView onVideoElement={handleVideoElement} />
             )}
             
-            {landmarks && displaySize.width > 0 && displaySize.height > 0 && (
+            {landmarks && videoSize.width > 0 && videoSize.height > 0 && (
               <PoseOverlay
                 landmarks={landmarks}
                 videoWidth={videoSize.width}
                 videoHeight={videoSize.height}
-                containerWidth={displaySize.width}
-                containerHeight={displaySize.height}
+                containerWidth={containerRect.width}
+                containerHeight={containerRect.height}
                 isMirrored={!isVideoFileMode}
               />
             )}

@@ -1,7 +1,8 @@
-// src/ui/hooks/usePoseAnalysis.ts (TensorFlow.js runtime版)
+// src/ui/hooks/usePoseAnalysis.ts (TensorFlow.js初期化修正版)
 
 import { useEffect, useRef, useState } from 'react';
 import * as poseDetection from '@tensorflow-models/pose-detection';
+import * as tf from '@tensorflow/tfjs-core';
 import '@tensorflow/tfjs-backend-webgl';
 import { Landmark } from '../../types';
 import { useAppStore } from '../../state/store';
@@ -34,6 +35,14 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
         
         console.log('🚀 TensorFlow.js BlazePose初期化開始...');
         
+        // TensorFlow.jsバックエンドを明示的に設定
+        await tf.setBackend('webgl');
+        await tf.ready();
+        
+        console.log('📦 TensorFlow.js WebGLバックエンド準備完了');
+        
+        if (!isMounted) return;
+        
         const model = poseDetection.SupportedModels.BlazePose;
         const detectorConfig = {
           runtime: 'tfjs' as const,
@@ -54,8 +63,34 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
       } catch (err) {
         console.error('❌ TensorFlow.js BlazePose初期化エラー:', err);
         if (isMounted) {
-          setError(`TensorFlow.js BlazePoseの初期化に失敗しました: ${err instanceof Error ? err.message : String(err)}`);
-          setIsInitializing(false);
+          // WebGLが失敗した場合、CPUバックエンドにフォールバック
+          try {
+            console.log('🔄 CPUバックエンドにフォールバック...');
+            await tf.setBackend('cpu');
+            await tf.ready();
+            
+            const model = poseDetection.SupportedModels.BlazePose;
+            const detectorConfig = {
+              runtime: 'tfjs' as const,
+              modelType: 'lite' as const,
+              enableSmoothing: true,
+              enableSegmentation: false
+            };
+            
+            const poseDetector = await poseDetection.createDetector(model, detectorConfig);
+            
+            if (isMounted) {
+              console.log('✅ TensorFlow.js BlazePose初期化完了（CPU）');
+              setDetector(poseDetector);
+              setIsModelReady(true);
+              setIsInitializing(false);
+            }
+          } catch (fallbackErr) {
+            if (isMounted) {
+              setError(`TensorFlow.js BlazePoseの初期化に失敗しました: ${fallbackErr instanceof Error ? fallbackErr.message : String(fallbackErr)}`);
+              setIsInitializing(false);
+            }
+          }
         }
       }
     };

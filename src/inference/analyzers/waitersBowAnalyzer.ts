@@ -1,6 +1,7 @@
-// Waiter's Bow Test Analyzer
+// src/inference/analyzers/waitersBowAnalyzer.ts (新機能追加版)
+
 import { Landmark, TestResult, TestType } from '../../types';
-import { calculateAngleBetweenPoints, calculateMovementStability } from '../utils/mathUtils';
+import { calculateAngleBetweenPoints, calculateMovementSmoothness } from '../utils/mathUtils';
 import { BaseAnalyzer } from './baseAnalyzer';
 
 export class WaitersBowAnalyzer extends BaseAnalyzer {
@@ -8,75 +9,51 @@ export class WaitersBowAnalyzer extends BaseAnalyzer {
     super(TestType.WAITERS_BOW);
   }
 
-  /**
-   * Analyze landmarks for Waiter's Bow test
-   * This test assesses lumbar lordosis control during hip flexion
-   */
   analyze(landmarks: Landmark[], landmarkHistory: Landmark[][] = []): TestResult {
-    // Extract relevant landmarks for lumbar spine and hip analysis
-    // Note: Indexes based on MediaPipe Pose landmarks
-    const hip = landmarks[23]; // Right hip
-    const shoulder = landmarks[11]; // Right shoulder
-    const knee = landmarks[25]; // Right knee
+    const leftShoulder = landmarks[11];
+    const rightShoulder = landmarks[12];
+    const leftHip = landmarks[23];
+    const rightHip = landmarks[24];
+    const leftKnee = landmarks[25];
+    const rightKnee = landmarks[26];
+    const leftAnkle = landmarks[27];
+    const rightAnkle = landmarks[28];
 
-    // Calculate the hip flexion angle
-    const hipFlexionAngle = calculateAngleBetweenPoints(shoulder, hip, knee);
-    
-    // Calculate the lumbar stability during the movement
-    const stabilityMetrics = calculateMovementStability(landmarkHistory, [11, 23, 24]); // shoulders and hips
-    
-    // Evaluate performance metrics
-    const hipFlexionQuality = this.evaluateHipFlexionQuality(hipFlexionAngle);
-    const lumbarStabilityScore = stabilityMetrics.steadinessIndex;
-    
-    // Calculate overall score (0-100)
-    const score = (hipFlexionQuality * 0.6) + (lumbarStabilityScore * 0.4);
-    
-    // Generate feedback
-    let feedback = '';
-    if (hipFlexionQuality < 60) {
-      feedback += 'Hip flexion needs improvement. Focus on bending from the hip joint while keeping your back stable. ';
-    }
-    
-    if (lumbarStabilityScore < 60) {
-      feedback += 'Lumbar stability needs improvement. Try to maintain a neutral spine position during the movement.';
-    }
-    
-    if (score > 80) {
-      feedback = 'Excellent lumbar control during hip flexion.';
-    }
+    // 左右の平均値を使って、より安定した値を計算
+    const shoulder = { x: (leftShoulder.x + rightShoulder.x) / 2, y: (leftShoulder.y + rightShoulder.y) / 2, z: 0, visibility: 1 };
+    const hip = { x: (leftHip.x + rightHip.x) / 2, y: (leftHip.y + rightHip.y) / 2, z: 0, visibility: 1 };
+    const knee = { x: (leftKnee.x + rightKnee.x) / 2, y: (leftKnee.y + rightKnee.y) / 2, z: 0, visibility: 1 };
+    const ankle = { x: (leftAnkle.x + rightAnkle.x) / 2, y: (leftAnkle.y + rightAnkle.y) / 2, z: 0, visibility: 1 };
 
-    // Create and return the test result
+    // ★★★ 新機能：股関節と膝関節の屈曲角度を計算 ★★★
+    const hipFlexionAngle = 180 - calculateAngleBetweenPoints(shoulder, hip, knee);
+    const kneeFlexionAngle = 180 - calculateAngleBetweenPoints(hip, knee, ankle);
+
+    // 腰椎の動き（肩と腰の垂直距離の変化）を評価
+    const spineMovementHistory = landmarkHistory.map(frame => Math.abs(frame[11].y - frame[23].y));
+    const spineMovementSmoothness = calculateMovementSmoothness(spineMovementHistory);
+
+    // スコア計算ロジック（例）
+    const idealHipAngle = 90;
+    const hipScore = 100 - Math.min(100, Math.abs(hipFlexionAngle - idealHipAngle));
+    const kneeScore = 100 - Math.min(100, kneeFlexionAngle * 2); // 膝はあまり曲げない方が高スコア
+    const spineScore = spineMovementSmoothness;
+    const overallScore = (hipScore * 0.5) + (kneeScore * 0.3) + (spineScore * 0.2);
+
+    // フィードバック
+    let feedback = `股関節の屈曲角度: ${hipFlexionAngle.toFixed(1)}°, 膝の屈曲角度: ${kneeFlexionAngle.toFixed(1)}°。`;
+    if (hipFlexionAngle < 70) feedback += "股関節の屈曲が不足しています。";
+    if (kneeFlexionAngle > 30) feedback += "膝が過度に曲がっています。";
+    if (spineScore < 70) feedback += "腰椎の動きが不安定です。";
+
     return this.createBaseResult(
-      score,
+      overallScore,
       {
-        hipFlexionAngle,
-        hipFlexionQuality,
-        lumbarStability: lumbarStabilityScore,
-        movementRange: stabilityMetrics.movementRange,
-        deviationScore: stabilityMetrics.deviationScore
+        '股関節屈曲角度': hipFlexionAngle, // ★★★ 結果に追加 ★★★
+        '膝関節屈曲角度': kneeFlexionAngle, // ★★★ 結果に追加 ★★★
+        '腰椎の安定性': spineScore,
       },
       feedback
     );
-  }
-
-  /**
-   * Evaluate the quality of hip flexion
-   */
-  private evaluateHipFlexionQuality(hipFlexionAngle: number): number {
-    // Hip flexion angle should ideally be in the range of 50-70 degrees
-    // This is a simplified evaluation logic - in a real app this would be more sophisticated
-    if (hipFlexionAngle < 30) {
-      return 40; // Insufficient flexion
-    } else if (hipFlexionAngle > 90) {
-      return 60; // Excessive flexion
-    } else if (hipFlexionAngle >= 50 && hipFlexionAngle <= 70) {
-      return 100; // Optimal range
-    } else {
-      // Linear interpolation for values between ranges
-      return hipFlexionAngle < 50 
-        ? 60 + (hipFlexionAngle - 30) * (40 / 20) // 30-50 range
-        : 100 - (hipFlexionAngle - 70) * (40 / 20); // 70-90 range
-    }
   }
 }

@@ -9,10 +9,9 @@ import { BaseAnalyzer } from '../../inference/analyzers/baseAnalyzer';
 import { Landmark, TestType } from '../../types';
 import { useAppStore } from '../../state/store';
 
-// フックが受け取る引数の型を定義
 interface UsePoseAnalysisProps {
   videoElement: HTMLVideoElement | null;
-  loop: boolean; // trueならウェブカメラ、falseなら動画ファイル
+  loop: boolean;
 }
 
 export const usePoseAnalysis = ({ videoElement, loop }: UsePoseAnalysisProps) => {
@@ -26,15 +25,32 @@ export const usePoseAnalysis = ({ videoElement, loop }: UsePoseAnalysisProps) =>
     [TestType.SINGLE_LEG_STANCE]: new SingleLegStanceAnalyzer(),
   });
 
-  // Get state and actions from store
-  const {
-    currentTest,
-    updateLandmarks,
-    completeTest,
-    stopTest,
-  } = useAppStore();
+  // ストアから取得するのは、再生成されない「関数」のみにする
+  const { updateLandmarks, completeTest, stopTest } = useAppStore();
 
-  // Initialize pose landmarker service
+  // ★★★ 無限ループ解消の最重要ポイント ★★★
+  // MediaPipeからの結果を処理するコールバック
+  const handleLandmarkResults = useCallback((landmarks: Landmark[], timestamp: number) => {
+    // 1. 骨格の描画はいつでも行う
+    updateLandmarks(landmarks, timestamp);
+    landmarkHistory.current.push(landmarks);
+    if (landmarkHistory.current.length > 300) {
+      landmarkHistory.current.shift();
+    }
+    
+    // 2. スコア計算は「実行中」の時だけ行う
+    // getState()を使うことで、この関数がストアの状態に依存するのを防ぐ
+    const state = useAppStore.getState();
+    if (state.testStatus === 'running' && state.currentTest !== null) {
+      if (loop && landmarkHistory.current.length >= 50) {
+        const analyzer = analyzers.current[state.currentTest];
+        const result = analyzer.analyze(landmarks, landmarkHistory.current);
+        completeTest(result);
+      }
+    }
+  }, [updateLandmarks, completeTest, loop]); // 依存配列を最小限に
+
+  // モデルの初期化 (変更なし)
   useEffect(() => {
     const initialize = async () => {
       try {
@@ -46,100 +62,78 @@ export const usePoseAnalysis = ({ videoElement, loop }: UsePoseAnalysisProps) =>
         console.error('Failed to initialize Pose Landmarker:', error);
       }
     };
-
     initialize();
-
     return () => {
-      if (poseLandmarkerService.current) {
-        poseLandmarkerService.current.close();
-      }
-      if (rafId.current) {
-        cancelAnimationFrame(rafId.current);
-      }
+      if (poseLandmarkerService.current) poseLandmarkerService.current.close();
+      if (rafId.current) cancelAnimationFrame(rafId.current);
     };
   }, []);
 
-  // ★★★ 常時解析のためのロジック分離 ★★★
-  // MediaPipeからの結果を処理するコールバック関数
-  const handleLandmarkResults = useCallback(
-    (landmarks: Landmark[], timestamp: number) => {
-      // 1. ランドマークの描画は、テスト状態に関わらず常に行う
-      updateLandmarks(landmarks, timestamp);
-      landmarkHistory.current.push(landmarks);
-      if (landmarkHistory.current.length > 300) { // 約10秒分のデータを保持 (30fpsの場合)
-        landmarkHistory.current.shift();
-      }
-      
-      // 2. スコア計算は「実行中」の時だけ行う
-      // useAppStore.getState() を使うことで、このコールバックがtestStatusの変更で再生成されるのを防ぐ
-      if (useAppStore.getState().testStatus === 'running' && currentTest !== null) {
-        // ウェブカメラの場合は、一定フレーム溜まったら完了と判断
-        if (loop && landmarkHistory.current.length >= 50) { // 約1.5秒でテスト完了
-          const analyzer = analyzers.current[currentTest];
-          const result = analyzer.analyze(landmarks, landmarkHistory.current);
-          completeTest(result);
-        }
-        // 動画の場合は、ループの終了時に最終解析を行うので、ここでは何もしない
-      }
-    },
-    [currentTest, updateLandmarks, completeTest, loop]
-  );
-
-  // ★★★ 常時解析のためのループ制御 ★★★
-  // ビデオ要素が変更されたときに、解析ループを開始・停止する
+  // 解析ループの制御 (より安定したロジックに)
   useEffect(() => {
-    // 必要なものが揃っていなければループを開始しない
-    if (!isModelReady || !videoElement || !poseLandmarkerService.current) {
-      if (rafId.current) {
-        cancelAnimationFrame(rafId.current);
-      }
+    if (!isModelReady || !videoElement) {
+      if (rafId.current) cancelAnimationFrame(rafId.current);
       return;
     }
 
-    poseLandmarkerService.current.setResultCallback(handleLandmarkResults);
+    poseLandmarkerService.current?.setResultCallback(handleLandmarkResults);
 
     const predictVideoFrame = () => {
+      // ループを続けるかどうかのフラグ
+      let continueLoop = true;
+
       if (videoElement && poseLandmarkerService.current) {
         const isVideoPlaying = !videoElement.paused && !videoElement.ended;
 
-        if (isVideoPlaying || loop) { // ウェブカメラ(loop)か、動画が再生中なら
+        if (isVideoPlaying || loop) {
           if (videoElement.videoWidth > 0) {
             const timestamp = loop ? performance.now() : videoElement.currentTime * 1000;
             poseLandmarkerService.current.processVideoFrame(videoElement, timestamp);
           }
-          rafId.current = requestAnimationFrame(predictVideoFrame);
-        } else if (!loop && useAppStore.getState().testStatus === 'running') {
-          // 動画ファイルが終了し、かつ「実行中」だった場合
-          console.log('Video analysis finished.');
-          const lastLandmarks = landmarkHistory.current.at(-1);
-          if (currentTest && lastLandmarks) {
-            const analyzer = analyzers.current[currentTest];
-            const result = analyzer.analyze(lastLandmarks, landmarkHistory.current);
-            completeTest(result);
-          } else {
-            // 解析データがなければ、 просто stop
-            stopTest();
+        } else if (!loop) {
+          // 動画が終了した場合
+          continueLoop = false;
+          const state = useAppStore.getState();
+          if (state.testStatus === 'running') {
+            console.log('Video analysis finished.');
+            const lastLandmarks = landmarkHistory.current.at(-1);
+            if (state.currentTest && lastLandmarks) {
+              const analyzer = analyzers.current[state.currentTest];
+              const result = analyzer.analyze(lastLandmarks, landmarkHistory.current);
+              completeTest(result);
+            } else {
+              stopTest();
+            }
           }
         }
+      } else {
+        continueLoop = false;
+      }
+
+      if (continueLoop) {
+        rafId.current = requestAnimationFrame(predictVideoFrame);
       }
     };
     
-    // ループを開始
     predictVideoFrame();
 
     return () => {
-      if (rafId.current) {
-        cancelAnimationFrame(rafId.current);
-      }
+      if (rafId.current) cancelAnimationFrame(rafId.current);
     };
-  }, [videoElement, isModelReady, handleLandmarkResults]); // testStatusを依存配列から削除
+  }, [videoElement, isModelReady, handleLandmarkResults, loop, completeTest, stopTest]);
 
-  // Reset landmark history
+  // リセット処理
   useEffect(() => {
-    if (useAppStore.getState().testStatus === 'idle') {
-      landmarkHistory.current = [];
-    }
-  }, [useAppStore.getState().testStatus]);
+    // testStatusが変更されたことを検知して履歴をクリア
+    const unsubscribe = useAppStore.subscribe(
+      (state, prevState) => {
+        if (state.testStatus === 'idle' && prevState.testStatus !== 'idle') {
+          landmarkHistory.current = [];
+        }
+      }
+    );
+    return unsubscribe;
+  }, []);
 
   return { isModelReady };
 };

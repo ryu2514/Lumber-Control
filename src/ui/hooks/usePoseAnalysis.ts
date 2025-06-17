@@ -1,10 +1,10 @@
-// src/ui/hooks/usePoseAnalysis.ts (TypeScript修正版)
+// src/ui/hooks/usePoseAnalysis.ts (更新版)
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { PoseLandmarkerService } from '../../inference/mediapipe/poseLandmarkerService';
-import { WaitersBowAnalyzer } from '../../inference/analyzers/waitersBowAnalyzer';
-import { PelvicTiltAnalyzer } from '../../inference/analyzers/pelvicTiltAnalyzer';
-import { SingleLegStanceAnalyzer } from '../../inference/analyzers/singleLegStanceAnalyzer';
+import { StandingHipFlexionAnalyzer } from '../../inference/analyzers/standingHipFlexionAnalyzer';
+import { RockBackAnalyzer } from '../../inference/analyzers/rockBackAnalyzer';
+import { SittingKneeExtensionAnalyzer } from '../../inference/analyzers/sittingKneeExtensionAnalyzer';
 import { BaseAnalyzer } from '../../inference/analyzers/baseAnalyzer';
 import { Landmark, TestType } from '../../types';
 import { useAppStore } from '../../state/store';
@@ -17,9 +17,9 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
   const rafId = useRef<number | null>(null);
   const landmarkHistory = useRef<Landmark[][]>([]);
   const analyzers = useRef<Record<TestType, BaseAnalyzer>>({
-    [TestType.WAITERS_BOW]: new WaitersBowAnalyzer(),
-    [TestType.PELVIC_TILT]: new PelvicTiltAnalyzer(),
-    [TestType.SINGLE_LEG_STANCE]: new SingleLegStanceAnalyzer(),
+    [TestType.STANDING_HIP_FLEXION]: new StandingHipFlexionAnalyzer(),
+    [TestType.ROCK_BACK]: new RockBackAnalyzer(),
+    [TestType.SITTING_KNEE_EXTENSION]: new SittingKneeExtensionAnalyzer(),
   });
 
   const { 
@@ -31,14 +31,12 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
 
   const handleLandmarkResults = useCallback((landmarks: Landmark[], timestamp: number) => {
     try {
-      // ランドマークの品質チェック
       if (!landmarks || landmarks.length === 0) {
         console.warn('Empty landmarks received');
         return;
       }
 
-      // 重要なランドマークの可視性チェック
-      const importantLandmarks = [11, 12, 23, 24, 25, 26, 27, 28]; // 肩、腰、膝、足首
+      const importantLandmarks = [11, 12, 23, 24, 25, 26, 27, 28, 0]; // 肩、腰、膝、足首、鼻
       const visibleImportantLandmarks = importantLandmarks.filter(
         index => {
           const landmark = landmarks[index];
@@ -47,13 +45,12 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
       );
 
       if (visibleImportantLandmarks.length < 6) {
-        console.warn(`Only ${visibleImportantLandmarks.length}/8 important landmarks visible`);
+        console.warn(`Only ${visibleImportantLandmarks.length}/9 important landmarks visible`);
       }
 
       updateLandmarks(landmarks, timestamp);
       landmarkHistory.current.push(landmarks);
       
-      // メモリ使用量制限
       if (landmarkHistory.current.length > 300) {
         landmarkHistory.current.shift();
       }
@@ -65,7 +62,6 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
     }
   }, [updateLandmarks]);
 
-  // MediaPipe初期化
   useEffect(() => {
     const initialize = async () => {
       if (isInitializing) return;
@@ -107,11 +103,9 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
     };
   }, []);
 
-  // 解析ループの管理
   useEffect(() => {
     console.log(`🎬 Analysis Effect - Status: ${testStatus}, Model: ${isModelReady}, Video: ${!!videoElement}`);
     
-    // 実行中でない、または準備ができていない場合は、ループを完全に停止する
     if (testStatus !== 'running' || !isModelReady || !videoElement || !poseLandmarkerService.current) {
       console.log('🛑 Stopping analysis loop');
       if (rafId.current) {
@@ -129,16 +123,14 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
 
       const predictVideoFrame = () => {
         try {
-          // 状態チェック
           const currentStatus = useAppStore.getState().testStatus;
           if (currentStatus !== 'running' || !videoElement) {
             console.log('🔄 Loop guard triggered - stopping');
             return;
           }
 
-          // ビデオの準備チェック
           if (videoElement.videoWidth > 0 && videoElement.videoHeight > 0) {
-            if (videoElement.readyState >= 2) { // HAVE_CURRENT_DATA
+            if (videoElement.readyState >= 2) {
               poseLandmarkerService.current?.processVideoFrame(videoElement, performance.now());
             }
           } else {
@@ -152,7 +144,6 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
         }
       };
 
-      // 解析完了ハンドラ
       const performFinalAnalysis = () => {
         console.log('🏁 Performing final analysis...');
         try {
@@ -183,15 +174,13 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
       console.log(`📹 Video type: ${isVideoFile ? 'File' : 'Webcam'}`);
       
       if (isVideoFile) {
-        // 動画ファイルの場合: 'ended'イベントで完了
         videoElement.addEventListener('ended', performFinalAnalysis, { once: true });
         console.log('🎬 Video file analysis setup complete');
       } else {
-        // ウェブカメラの場合: 5秒のタイムアウトで完了
         const timeoutId = setTimeout(() => {
           console.log('⏰ Webcam analysis timeout reached');
           performFinalAnalysis();
-        }, 5000);
+        }, 8000); // 腰椎コントロール評価のため少し長めに設定
         
         return () => {
           console.log('⏰ Clearing webcam timeout');
@@ -199,7 +188,6 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
         };
       }
 
-      // ループ開始
       console.log('🎯 Starting prediction loop');
       predictVideoFrame();
 
@@ -219,7 +207,6 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
     }
   }, [isModelReady, videoElement, testStatus, handleLandmarkResults, completeTest, stopTest]);
 
-  // テスト状態のリセット
   useEffect(() => {
     if (testStatus === 'idle') {
       console.log('🔄 Resetting landmark history');

@@ -1,54 +1,33 @@
 // Common types for the application
 
 // Landmark type matching MediaPipe's format
+// src/types.ts (更新版)
+
 export interface Landmark {
   x: number;
   y: number;
   z: number;
-  visibility?: number;
+  visibility: number;
 }
 
-// Enum for test types
 export enum TestType {
-  WAITERS_BOW = 'waitersBow',
-  PELVIC_TILT = 'pelvicTilt',
-  SINGLE_LEG_STANCE = 'singleLegStance'
+  STANDING_HIP_FLEXION = 'standing_hip_flexion',
+  ROCK_BACK = 'rock_back',
+  SITTING_KNEE_EXTENSION = 'sitting_knee_extension',
 }
 
-// Status of test execution
-export type TestStatus = 'idle' | 'running' | 'completed' | 'error';
-
-// Analysis results for each test
 export interface TestResult {
-  testType: TestType;
   score: number;
-  metrics: {
-    [key: string]: number;
-  };
+  metrics: Record<string, number | string>;
   feedback: string;
   timestamp: number;
 }
 
-// Stability metrics
-export interface StabilityMetrics {
-  deviationScore: number;
-  movementRange: number;
-  steadinessIndex: number;
-}
-
-// App state interface
 export interface AppState {
   currentTest: TestType | null;
-  testStatus: TestStatus;
-  landmarks: Landmark[];
-  analysisResults: {
-    [key in TestType]?: TestResult;
-  };
-  
-  // Actions
-  setCurrentTest: (test: TestType) => void;
-  startTest: () => Promise<void>;
-  updateLandmarks: (landmarks: Landmark[]) => void;
-  completeTest: (result: TestResult) => void;
-  resetTest: () => void;
+  testStatus: 'idle' | 'running' | 'completed';
+  landmarks: Landmark[] | null;
+  analysisResults: Record<TestType, TestResult>;
 }
+
+export type TestStatus = 'idle' | 'running' | 'completed';

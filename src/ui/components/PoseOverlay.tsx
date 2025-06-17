@@ -1,4 +1,4 @@
-// src/ui/components/PoseOverlay.tsx (NaN修正版)
+// src/ui/components/PoseOverlay.tsx (動画直上描写版)
 
 import React from 'react';
 import { Landmark } from '../../types';
@@ -21,6 +21,11 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
   isMirrored = false,
 }) => {
   if (!landmarks || landmarks.length === 0 || videoWidth === 0 || videoHeight === 0) {
+    console.log('🚫 PoseOverlay: 基本条件が満たされていません', { 
+      landmarksLength: landmarks?.length, 
+      videoWidth, 
+      videoHeight 
+    });
     return null;
   }
 
@@ -104,22 +109,33 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
     [0, 12],  // 鼻-右肩
   ];
 
+  // 可視性の閾値を下げる（0.3 → 0.1）
+  const visibilityThreshold = 0.1;
+
   const visibleLandmarks = landmarks.filter((landmark, index) => 
     landmark && 
     typeof landmark.visibility === 'number' && 
-    landmark.visibility > 0.3 &&
+    landmark.visibility > visibilityThreshold &&
     importantLandmarks.includes(index) &&
     !isNaN(landmark.x) && !isNaN(landmark.y) // NaN値を除外
   );
 
-  // デバイスに応じたサイズ調整
+  // より詳細なログ
+  console.log('👀 可視ランドマーク詳細:', {
+    全体数: landmarks.length,
+    重要ランドマーク数: importantLandmarks.length,
+    可視ランドマーク数: visibleLandmarks.length,
+    閾値: visibilityThreshold
+  });
+
+  // デバイスに応じたサイズ調整（より大きく）
   const isMobile = displayWidth < 768;
-  const baseRadius = isMobile ? 3 : 5;
-  const strokeWidth = isMobile ? 2 : 3;
-  const fontSize = isMobile ? 10 : 12;
+  const baseRadius = isMobile ? 5 : 8;
+  const strokeWidth = isMobile ? 3 : 5;
+  const fontSize = isMobile ? 12 : 16;
 
   return (
-    <svg
+    <div
       className="absolute inset-0 w-full h-full pointer-events-none"
       style={{
         position: 'absolute',
@@ -127,96 +143,124 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
         left: 0,
         width: '100%',
         height: '100%',
-        zIndex: 10,
+        zIndex: 9999, // 最高優先度で動画の直上に配置
         pointerEvents: 'none',
       }}
-      viewBox={`0 0 ${displayWidth} ${displayHeight}`}
-      preserveAspectRatio="xMidYMid meet"
     >
-      {/* 接続線を描画 */}
-      {connections.map(([startIdx, endIdx], connectionIndex) => {
-        const startLandmark = landmarks[startIdx];
-        const endLandmark = landmarks[endIdx];
-        
-        if (!startLandmark || !endLandmark ||
-            startLandmark.visibility < 0.3 || endLandmark.visibility < 0.3 ||
-            isNaN(startLandmark.x) || isNaN(startLandmark.y) ||
-            isNaN(endLandmark.x) || isNaN(endLandmark.y)) {
-          return null;
-        }
-        
-        const start = transformLandmark(startLandmark);
-        const end = transformLandmark(endLandmark);
-        
-        // 変換後の座標もチェック
-        if (isNaN(start.x) || isNaN(start.y) || isNaN(end.x) || isNaN(end.y)) {
-          return null;
-        }
-        
-        return (
-          <line
-            key={`connection-${connectionIndex}`}
-            x1={start.x}
-            y1={start.y}
-            x2={end.x}
-            y2={end.y}
-            stroke="#00ff00"
-            strokeWidth={strokeWidth}
-            opacity="0.8"
-          />
-        );
-      })}
-      
-      {/* ランドマークポイントを描画 */}
-      {visibleLandmarks.map((landmark) => {
-        const originalIndex = importantLandmarks.find(idx => landmarks[idx] === landmark);
-        if (originalIndex === undefined) return null;
-        
-        const point = transformLandmark(landmark);
-        
-        // 変換後の座標をチェック
-        if (isNaN(point.x) || isNaN(point.y)) {
-          return null;
-        }
-        
-        // ランドマークの種類に応じて色を変更
-        let color = '#ff0000'; // デフォルト：赤
-        if ([11, 12].includes(originalIndex)) color = '#ff6600'; // 肩：オレンジ
-        if ([13, 14].includes(originalIndex)) color = '#ffaa00'; // 肘：明るいオレンジ
-        if ([15, 16].includes(originalIndex)) color = '#ffdd00'; // 手首：黄色
-        if ([23, 24].includes(originalIndex)) color = '#0066ff'; // 腰：青
-        if ([25, 26].includes(originalIndex)) color = '#ff00ff'; // 膝：マゼンタ
-        if ([27, 28].includes(originalIndex)) color = '#00ffff'; // 足首：シアン
-        if ([29, 30].includes(originalIndex)) color = '#aa00ff'; // かかと：紫
-        if ([31, 32].includes(originalIndex)) color = '#00ff88'; // つま先：緑
-        if (originalIndex === 0) color = '#ffff00'; // 鼻：黄色
-        
-        return (
-          <circle
-            key={`landmark-${originalIndex}`}
-            cx={point.x}
-            cy={point.y}
-            r={baseRadius}
-            fill={color}
-            opacity="0.9"
-            stroke="#ffffff"
-            strokeWidth="1"
-          />
-        );
-      })}
-      
-      {/* デバッグ情報 */}
-      <text
-        x={10}
-        y={20}
-        fill="#ffffff"
-        fontSize={fontSize}
-        opacity="0.7"
-        stroke="#000000"
-        strokeWidth="0.5"
+      <svg
+        className="w-full h-full"
+        style={{
+          width: '100%',
+          height: '100%',
+        }}
+        viewBox={`0 0 ${displayWidth} ${displayHeight}`}
+        preserveAspectRatio="xMidYMid meet"
       >
-        {visibleLandmarks.length}pts {Math.round(displayWidth)}x{Math.round(displayHeight)} TF.js
-      </text>
-    </svg>
+        {/* テスト用固定ポイント（必ず表示される） */}
+        <circle cx={displayWidth * 0.5} cy={displayHeight * 0.3} r="10" fill="#ff0000" opacity="0.8" />
+        <circle cx={displayWidth * 0.3} cy={displayHeight * 0.5} r="10" fill="#00ff00" opacity="0.8" />
+        <circle cx={displayWidth * 0.7} cy={displayHeight * 0.5} r="10" fill="#0000ff" opacity="0.8" />
+        <circle cx={displayWidth * 0.5} cy={displayHeight * 0.7} r="10" fill="#ffff00" opacity="0.8" />
+
+        {/* 接続線を描画 */}
+        {connections.map(([startIdx, endIdx], connectionIndex) => {
+          const startLandmark = landmarks[startIdx];
+          const endLandmark = landmarks[endIdx];
+          
+          if (!startLandmark || !endLandmark ||
+              startLandmark.visibility < visibilityThreshold || 
+              endLandmark.visibility < visibilityThreshold ||
+              isNaN(startLandmark.x) || isNaN(startLandmark.y) ||
+              isNaN(endLandmark.x) || isNaN(endLandmark.y)) {
+            return null;
+          }
+          
+          const start = transformLandmark(startLandmark);
+          const end = transformLandmark(endLandmark);
+          
+          // 変換後の座標もチェック
+          if (isNaN(start.x) || isNaN(start.y) || isNaN(end.x) || isNaN(end.y)) {
+            return null;
+          }
+          
+          return (
+            <line
+              key={`connection-${connectionIndex}`}
+              x1={start.x}
+              y1={start.y}
+              x2={end.x}
+              y2={end.y}
+              stroke="#00ff00"
+              strokeWidth={strokeWidth}
+              opacity="0.8"
+            />
+          );
+        })}
+        
+        {/* ランドマークポイントを描画 */}
+        {visibleLandmarks.map((landmark) => {
+          const originalIndex = importantLandmarks.find(idx => landmarks[idx] === landmark);
+          if (originalIndex === undefined) return null;
+          
+          const point = transformLandmark(landmark);
+          
+          // 変換後の座標をチェック
+          if (isNaN(point.x) || isNaN(point.y)) {
+            return null;
+          }
+          
+          // ランドマークの種類に応じて色を変更
+          let color = '#ff0000'; // デフォルト：赤
+          if ([11, 12].includes(originalIndex)) color = '#ff6600'; // 肩：オレンジ
+          if ([13, 14].includes(originalIndex)) color = '#ffaa00'; // 肘：明るいオレンジ
+          if ([15, 16].includes(originalIndex)) color = '#ffdd00'; // 手首：黄色
+          if ([23, 24].includes(originalIndex)) color = '#0066ff'; // 腰：青
+          if ([25, 26].includes(originalIndex)) color = '#ff00ff'; // 膝：マゼンタ
+          if ([27, 28].includes(originalIndex)) color = '#00ffff'; // 足首：シアン
+          if ([29, 30].includes(originalIndex)) color = '#aa00ff'; // かかと：紫
+          if ([31, 32].includes(originalIndex)) color = '#00ff88'; // つま先：緑
+          if (originalIndex === 0) color = '#ffff00'; // 鼻：黄色
+          
+          return (
+            <circle
+              key={`landmark-${originalIndex}`}
+              cx={point.x}
+              cy={point.y}
+              r={baseRadius}
+              fill={color}
+              opacity="0.9"
+              stroke="#ffffff"
+              strokeWidth="2"
+            />
+          );
+        })}
+        
+        {/* デバッグ情報 */}
+        <text
+          x={10}
+          y={30}
+          fill="#ffffff"
+          fontSize={fontSize}
+          fontWeight="bold"
+          opacity="1.0"
+          stroke="#000000"
+          strokeWidth="1"
+        >
+          🎯 {visibleLandmarks.length}/{landmarks.length}pts | {Math.round(displayWidth)}x{Math.round(displayHeight)} TF.js
+        </text>
+        
+        <text
+          x={10}
+          y={55}
+          fill="#ffffff"
+          fontSize={fontSize - 2}
+          opacity="1.0"
+          stroke="#000000"
+          strokeWidth="1"
+        >
+          📊 閾値: {visibilityThreshold} | 動画直上描写
+        </text>
+      </svg>
+    </div>
   );
 };

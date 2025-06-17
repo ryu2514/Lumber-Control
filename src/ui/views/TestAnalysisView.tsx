@@ -1,6 +1,6 @@
 // src/ui/views/TestAnalysisView.tsx (最終完成版)
 
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { CameraView } from '../components/CameraView';
 import { PoseOverlay } from '../components/PoseOverlay';
 import { TestType } from '../../types';
@@ -13,11 +13,9 @@ const testTypeLabels: Record<TestType, string> = {
   [TestType.SINGLE_LEG_STANCE]: '片足立ちテスト（Single Leg Stance）',
 };
 
-// テストごとのお手本画像のパスを定義
 const exampleImages: Partial<Record<TestType, string>> = {
-  [TestType.WAITERS_BOW]: '/images/waiters-bow-example.png', // このパスはpublicフォルダからの相対パスです
+  [TestType.WAITERS_BOW]: '/images/waiters-bow-example.png',
   [TestType.PELVIC_TILT]: '/images/pelvic-tilt-example.png',
-  // 他のテストのお手本画像もここに追加できます
 };
 
 export const TestAnalysisView: React.FC = () => {
@@ -67,9 +65,10 @@ export const TestAnalysisView: React.FC = () => {
     }
   }, [videoElement]);
 
-  const handleVideoElement = (video: HTMLVideoElement) => {
+  // ★★★「パチパチ」問題の対策：useCallbackで関数をメモ化する★★★
+  const handleVideoElement = useCallback((video: HTMLVideoElement) => {
     setVideoElement(video);
-  };
+  }, []);
 
   const handleStartTest = () => {
     if (videoSrc && videoRefForUpload.current) {
@@ -121,10 +120,8 @@ export const TestAnalysisView: React.FC = () => {
       </div>
 
       <main className="test-content">
-        {/* --- ↓↓↓ ここが【左側の動画・解析エリア】です ↓↓↓ --- */}
         <div className="camera-section">
           <div className="video-container" style={{ position: 'relative' }}>
-            {/* 映像表示ロジック */}
             {videoSrc ? (
               <video
                 ref={videoRefForUpload}
@@ -136,22 +133,22 @@ export const TestAnalysisView: React.FC = () => {
             ) : (
               <CameraView onVideoElement={handleVideoElement} />
             )}
-
-            {/* ★★★【最重要】骨格の線（PoseOverlay）をここに配置します！ ★★★ */}
             {landmarks && videoSize.width > 0 && (
-  <PoseOverlay
-    landmarks={landmarks}
-    videoWidth={videoSize.width}
-    videoHeight={videoSize.height}
-    isMirrored={!videoSrc} // ★★★ この一行を追加！ ★★★
-  />
-)}
+              <PoseOverlay
+                landmarks={landmarks}
+                videoWidth={videoSize.width}
+                videoHeight={videoSize.height}
+                isMirrored={!videoSrc}
+              />
+            )}
           </div>
-
           <div className="test-controls">
-            {/* ボタン類 */}
             {testStatus === 'idle' && (
-              <button className="start-button" onClick={handleStartTest} disabled={!currentTest || !isModelReady}>
+              <button
+                className="start-button"
+                onClick={handleStartTest}
+                disabled={!currentTest || !isModelReady}
+              >
                 分析開始
               </button>
             )}
@@ -160,9 +157,7 @@ export const TestAnalysisView: React.FC = () => {
           </div>
         </div>
 
-        {/* --- ↓↓↓ ここが【右側の結果・お手本エリア】です ↓↓↓ --- */}
         <div className="results-section">
-          {/* テスト結果がある場合は、結果を表示 */}
           {currentTest && currentTestResult ? (
             <div className="test-results">
               <h3>{testTypeLabels[currentTest]} 結果</h3>
@@ -185,12 +180,10 @@ export const TestAnalysisView: React.FC = () => {
               </div>
             </div>
           ) : exampleImageSrc ? (
-            // 結果がなく、お手本画像がある場合は、お手本画像を表示
             <div className="example-image-container">
               <img src={exampleImageSrc} alt="テストのお手本" className="w-full h-auto" />
             </div>
           ) : (
-            // それ以外の場合は、プロンプトメッセージを表示
             <div className="no-results">
               {currentTest ? <p>テストを開始してください。</p> : <p>テストを選択してください。</p>}
             </div>

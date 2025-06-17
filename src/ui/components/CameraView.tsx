@@ -1,69 +1,54 @@
-// Camera component for video input
-import React, { useEffect, useRef, useState } from 'react';
+// src/ui/components/CameraView.tsx (完成版)
+
+import React, { useEffect, useRef } from 'react';
 
 interface CameraViewProps {
   onVideoElement: (video: HTMLVideoElement) => void;
 }
 
-export const CameraView: React.FC<CameraViewProps> = ({ onVideoElement }) => {
+// React.memoでコンポーネントを囲みます
+export const CameraView: React.FC<CameraViewProps> = React.memo(({ onVideoElement }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
-  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    let stream: MediaStream | null = null;
+    const videoElement = videoRef.current;
+    if (!videoElement) return;
 
+    // カメラのセットアップ
+    let stream: MediaStream | null = null;
     const setupCamera = async () => {
       try {
-        // Request camera permissions
         stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-            facingMode: 'user'
-          },
-          audio: false
+          video: { facingMode: 'user' }, // 前面カメラを使用
+          audio: false,
         });
-
-        // Set up video element
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          videoRef.current.onloadedmetadata = () => {
-            if (videoRef.current) {
-              videoRef.current.play();
-              onVideoElement(videoRef.current);
-            }
-          };
-        }
+        videoElement.srcObject = stream;
+        videoElement.onloadedmetadata = () => {
+          videoElement.play();
+          onVideoElement(videoElement); // 準備完了を親に通知
+        };
       } catch (err) {
-        setError('カメラへのアクセスが拒否されました。設定を確認してください。');
-        console.error('Camera access error:', err);
+        console.error('Error accessing camera:', err);
       }
     };
 
     setupCamera();
 
-    // Clean up
+    // クリーンアップ関数
     return () => {
       if (stream) {
-        stream.getTracks().forEach((track) => {
-          track.stop();
-        });
+        stream.getTracks().forEach(track => track.stop());
       }
     };
-  }, [onVideoElement]);
+  }, [onVideoElement]); // onVideoElementは通常変わらないので、初回のみ実行される
 
   return (
-    <div className="camera-container">
-      {error ? (
-        <div className="error-message">{error}</div>
-      ) : (
-        <video
-          ref={videoRef}
-          className="camera-view"
-          playsInline
-          style={{ transform: 'rotateY(180deg)' }}
-        />
-      )}
-    </div>
+    <video
+      ref={videoRef}
+      autoPlay
+      playsInline
+      muted
+      className="w-full h-auto transform scale-x-[-1]" // 左右反転
+    />
   );
-};
+});

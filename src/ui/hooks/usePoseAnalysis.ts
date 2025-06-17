@@ -21,6 +21,7 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
   });
 
   const { 
+  currentTest, 
   testStatus, 
   updateLandmarks, 
   completeTest, 

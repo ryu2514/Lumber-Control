@@ -1,4 +1,4 @@
-// src/ui/components/PoseOverlay.tsx (デバイス対応版)
+// src/ui/components/PoseOverlay.tsx (NaN修正版)
 
 import React from 'react';
 import { Landmark } from '../../types';
@@ -31,14 +31,25 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
   console.log('🎯 PoseOverlay size calculation:', {
     videoSize: { width: videoWidth, height: videoHeight },
     displaySize: { width: displayWidth, height: displayHeight },
-    containerProvided: !!containerWidth,
+    landmarksLength: landmarks.length,
+    firstLandmark: landmarks[0]
   });
 
-  // ランドマークの座標を変換する関数（正確な比率計算）
+  // ランドマークの座標を変換する関数（NaN回避）
   const transformLandmark = (landmark: Landmark) => {
-    // MediaPipeの座標（0-1）を実際の表示サイズに変換
+    // TensorFlow.jsは既に正規化された座標（0-1）を返すので、直接使用
     let x = landmark.x * displayWidth;
     let y = landmark.y * displayHeight;
+    
+    // NaN値をチェックして修正
+    if (isNaN(x) || !isFinite(x)) {
+      console.warn('🚨 Invalid x coordinate:', landmark.x, '-> setting to 0');
+      x = 0;
+    }
+    if (isNaN(y) || !isFinite(y)) {
+      console.warn('🚨 Invalid y coordinate:', landmark.y, '-> setting to 0');
+      y = 0;
+    }
     
     if (isMirrored) {
       x = displayWidth - x;
@@ -47,7 +58,7 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
     return { x, y, visibility: landmark.visibility };
   };
 
-  // より多くの重要なランドマークのインデックス
+  // より多くの重要なランドマークのインデックス（TensorFlow.js BlazePose 33点）
   const importantLandmarks = [
     0,   // 鼻
     11, 12, // 肩
@@ -97,7 +108,8 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
     landmark && 
     typeof landmark.visibility === 'number' && 
     landmark.visibility > 0.3 &&
-    importantLandmarks.includes(index)
+    importantLandmarks.includes(index) &&
+    !isNaN(landmark.x) && !isNaN(landmark.y) // NaN値を除外
   );
 
   // デバイスに応じたサイズ調整
@@ -127,12 +139,19 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
         const endLandmark = landmarks[endIdx];
         
         if (!startLandmark || !endLandmark ||
-            startLandmark.visibility < 0.3 || endLandmark.visibility < 0.3) {
+            startLandmark.visibility < 0.3 || endLandmark.visibility < 0.3 ||
+            isNaN(startLandmark.x) || isNaN(startLandmark.y) ||
+            isNaN(endLandmark.x) || isNaN(endLandmark.y)) {
           return null;
         }
         
         const start = transformLandmark(startLandmark);
         const end = transformLandmark(endLandmark);
+        
+        // 変換後の座標もチェック
+        if (isNaN(start.x) || isNaN(start.y) || isNaN(end.x) || isNaN(end.y)) {
+          return null;
+        }
         
         return (
           <line
@@ -154,6 +173,11 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
         if (originalIndex === undefined) return null;
         
         const point = transformLandmark(landmark);
+        
+        // 変換後の座標をチェック
+        if (isNaN(point.x) || isNaN(point.y)) {
+          return null;
+        }
         
         // ランドマークの種類に応じて色を変更
         let color = '#ff0000'; // デフォルト：赤
@@ -181,7 +205,7 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
         );
       })}
       
-      {/* デバッグ情報（軽量版） */}
+      {/* デバッグ情報 */}
       <text
         x={10}
         y={20}
@@ -191,7 +215,7 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
         stroke="#000000"
         strokeWidth="0.5"
       >
-        {visibleLandmarks.length}pts {Math.round(displayWidth)}x{Math.round(displayHeight)}
+        {visibleLandmarks.length}pts {Math.round(displayWidth)}x{Math.round(displayHeight)} TF.js
       </text>
     </svg>
   );

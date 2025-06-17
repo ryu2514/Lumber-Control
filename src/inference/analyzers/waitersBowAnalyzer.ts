@@ -1,4 +1,4 @@
-// src/inference/analyzers/waitersBowAnalyzer.ts (完全版)
+// src/inference/analyzers/waitersBowAnalyzer.ts (TypeScript修正版)
 
 import { Landmark, TestResult, TestType } from '../../types';
 import { calculateAngleBetweenPoints } from '../utils/mathUtils';
@@ -17,21 +17,27 @@ export class WaitersBowAnalyzer extends BaseAnalyzer {
     try {
       // 履歴の中から最も深くお辞儀したフレーム（肩のY座標が最も大きい）を探す
       const deepestFrame = landmarkHistory.reduce((deepest, current) => {
-        // 安全性チェック
-        if (!current[11] || !current[12] || !deepest[11] || !deepest[12]) {
+        // 安全性チェック - ランドマークの存在確認
+        const deepestLeft = deepest[11];
+        const deepestRight = deepest[12];
+        const currentLeft = current[11];
+        const currentRight = current[12];
+        
+        if (!deepestLeft || !deepestRight || !currentLeft || !currentRight) {
           return deepest;
         }
         
-        const deepestShoulderY = (deepest[11].y + deepest[12].y) / 2;
-        const currentShoulderY = (current[11].y + current[12].y) / 2;
+        const deepestShoulderY = (deepestLeft.y + deepestRight.y) / 2;
+        const currentShoulderY = (currentLeft.y + currentRight.y) / 2;
         return currentShoulderY > deepestShoulderY ? current : deepest;
       }, landmarkHistory[0]);
 
       // 必要なランドマークの存在確認
       const requiredLandmarks = [11, 12, 23, 24, 25, 26, 27, 28, 7];
-      const missingLandmarks = requiredLandmarks.filter(index => 
-        !deepestFrame[index] || deepestFrame[index].visibility < 0.5
-      );
+      const missingLandmarks = requiredLandmarks.filter(index => {
+        const landmark = deepestFrame[index];
+        return !landmark || typeof landmark.visibility !== 'number' || landmark.visibility < 0.5;
+      });
 
       if (missingLandmarks.length > 0) {
         return this.createBaseResult(
@@ -41,15 +47,15 @@ export class WaitersBowAnalyzer extends BaseAnalyzer {
         );
       }
 
-      const leftShoulder = deepestFrame[11];
-      const rightShoulder = deepestFrame[12];
-      const leftHip = deepestFrame[23];
-      const rightHip = deepestFrame[24];
-      const leftKnee = deepestFrame[25];
-      const rightKnee = deepestFrame[26];
-      const leftAnkle = deepestFrame[27];
-      const rightAnkle = deepestFrame[28];
-      const leftEar = deepestFrame[7];
+      const leftShoulder = deepestFrame[11]!;
+      const rightShoulder = deepestFrame[12]!;
+      const leftHip = deepestFrame[23]!;
+      const rightHip = deepestFrame[24]!;
+      const leftKnee = deepestFrame[25]!;
+      const rightKnee = deepestFrame[26]!;
+      const leftAnkle = deepestFrame[27]!;
+      const rightAnkle = deepestFrame[28]!;
+      const leftEar = deepestFrame[7]!;
 
       // 中点の計算
       const shoulder = { 
@@ -92,7 +98,7 @@ export class WaitersBowAnalyzer extends BaseAnalyzer {
 
       // スコア計算（より詳細な評価）
       let score = 100;
-      let penalties = [];
+      const penalties = [];
 
       // 股関節屈曲角度の評価（理想: 90度）
       const hipAngleDiff = Math.abs(hipFlexionAngle - 90);

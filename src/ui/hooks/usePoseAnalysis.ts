@@ -1,4 +1,4 @@
-// src/ui/hooks/usePoseAnalysis.ts (完全版)
+// src/ui/hooks/usePoseAnalysis.ts (TypeScript修正版)
 
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { PoseLandmarkerService } from '../../inference/mediapipe/poseLandmarkerService';
@@ -40,7 +40,10 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
       // 重要なランドマークの可視性チェック
       const importantLandmarks = [11, 12, 23, 24, 25, 26, 27, 28]; // 肩、腰、膝、足首
       const visibleImportantLandmarks = importantLandmarks.filter(
-        index => landmarks[index]?.visibility > 0.5
+        index => {
+          const landmark = landmarks[index];
+          return landmark && typeof landmark.visibility === 'number' && landmark.visibility > 0.5;
+        }
       );
 
       if (visibleImportantLandmarks.length < 6) {

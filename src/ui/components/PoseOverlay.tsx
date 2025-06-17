@@ -1,4 +1,4 @@
-// src/ui/components/PoseOverlay.tsx (修正版)
+// src/ui/components/PoseOverlay.tsx (TypeScript修正版)
 
 import React, { useEffect, useRef } from 'react';
 import { Landmark } from '../../types';
@@ -33,7 +33,11 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = React.memo(({
       const startLandmark = landmarks[startIdx];
       const endLandmark = landmarks[endIdx];
 
-      if (startLandmark?.visibility > 0.5 && endLandmark?.visibility > 0.5) {
+      // 安全性チェック：undefinedとvisibilityプロパティの存在確認
+      if (startLandmark && endLandmark && 
+          typeof startLandmark.visibility === 'number' && 
+          typeof endLandmark.visibility === 'number' &&
+          startLandmark.visibility > 0.5 && endLandmark.visibility > 0.5) {
         const startX = startLandmark.x * videoWidth;
         const startY = startLandmark.y * videoHeight;
         const endX = endLandmark.x * videoWidth;
@@ -55,7 +59,8 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = React.memo(({
     ctx.fillStyle = options.color;
 
     landmarks.forEach((landmark) => {
-      if (landmark.visibility > 0.5) {
+      // 安全性チェック：undefinedとvisibilityプロパティの存在確認
+      if (landmark && typeof landmark.visibility === 'number' && landmark.visibility > 0.5) {
         const x = landmark.x * videoWidth;
         const y = landmark.y * videoHeight;
         

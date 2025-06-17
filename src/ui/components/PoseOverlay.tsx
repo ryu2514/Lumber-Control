@@ -1,4 +1,4 @@
-// src/ui/components/PoseOverlay.tsx (最終版)
+// src/ui/components/PoseOverlay.tsx (デバイス対応版)
 
 import React from 'react';
 import { Landmark } from '../../types';
@@ -24,12 +24,19 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
     return null;
   }
 
-  // 表示サイズを計算
+  // 実際の表示サイズを計算
   const displayWidth = containerWidth || videoWidth;
   const displayHeight = containerHeight || videoHeight;
 
-  // ランドマークの座標を変換する関数
+  console.log('🎯 PoseOverlay size calculation:', {
+    videoSize: { width: videoWidth, height: videoHeight },
+    displaySize: { width: displayWidth, height: displayHeight },
+    containerProvided: !!containerWidth,
+  });
+
+  // ランドマークの座標を変換する関数（正確な比率計算）
   const transformLandmark = (landmark: Landmark) => {
+    // MediaPipeの座標（0-1）を実際の表示サイズに変換
     let x = landmark.x * displayWidth;
     let y = landmark.y * displayHeight;
     
@@ -89,9 +96,15 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
   const visibleLandmarks = landmarks.filter((landmark, index) => 
     landmark && 
     typeof landmark.visibility === 'number' && 
-    landmark.visibility > 0.3 && // しきい値を下げてより多く表示
+    landmark.visibility > 0.3 &&
     importantLandmarks.includes(index)
   );
+
+  // デバイスに応じたサイズ調整
+  const isMobile = displayWidth < 768;
+  const baseRadius = isMobile ? 3 : 5;
+  const strokeWidth = isMobile ? 2 : 3;
+  const fontSize = isMobile ? 10 : 12;
 
   return (
     <svg
@@ -102,7 +115,7 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
         left: 0,
         width: '100%',
         height: '100%',
-        zIndex: 10, // 適切なz-index
+        zIndex: 10,
         pointerEvents: 'none',
       }}
       viewBox={`0 0 ${displayWidth} ${displayHeight}`}
@@ -129,7 +142,7 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
             x2={end.x}
             y2={end.y}
             stroke="#00ff00"
-            strokeWidth="3"
+            strokeWidth={strokeWidth}
             opacity="0.8"
           />
         );
@@ -141,7 +154,6 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
         if (originalIndex === undefined) return null;
         
         const point = transformLandmark(landmark);
-        const radius = Math.max(4, Math.min(displayWidth, displayHeight) * 0.01);
         
         // ランドマークの種類に応じて色を変更
         let color = '#ff0000'; // デフォルト：赤
@@ -160,7 +172,7 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
             key={`landmark-${originalIndex}`}
             cx={point.x}
             cy={point.y}
-            r={radius}
+            r={baseRadius}
             fill={color}
             opacity="0.9"
             stroke="#ffffff"
@@ -169,17 +181,17 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
         );
       })}
       
-      {/* 軽量なデバッグ情報 */}
+      {/* デバッグ情報（軽量版） */}
       <text
         x={10}
         y={20}
         fill="#ffffff"
-        fontSize="12"
+        fontSize={fontSize}
         opacity="0.7"
         stroke="#000000"
         strokeWidth="0.5"
       >
-        {visibleLandmarks.length} points
+        {visibleLandmarks.length}pts {Math.round(displayWidth)}x{Math.round(displayHeight)}
       </text>
     </svg>
   );

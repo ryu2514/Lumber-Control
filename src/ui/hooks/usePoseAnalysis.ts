@@ -1,4 +1,4 @@
-// src/ui/hooks/usePoseAnalysis.ts (不要変数削除版)
+// src/ui/hooks/usePoseAnalysis.ts (useRef修正版)
 
 import { useEffect, useRef, useState } from 'react';
 import { PoseLandmarker, FilesetResolver } from '@mediapipe/tasks-vision';
@@ -10,7 +10,11 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
   const [isModelReady, setIsModelReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isInitializing, setIsInitializing] = useState(true);
+  
+  // useRefをコンポーネントトップレベルで宣言
   const animationFrameRef = useRef<number>();
+  const frameCountRef = useRef(0);
+  const startTimeRef = useRef(0);
   
   const { 
     testStatus, 
@@ -83,8 +87,6 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
     }
 
     let lastVideoTime = -1;
-    const frameCount = useRef(0);
-    const startTime = useRef(Date.now());
 
     const detectPose = async () => {
       try {
@@ -96,10 +98,10 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
         
         if (currentTime !== lastVideoTime) {
           lastVideoTime = currentTime;
-          frameCount.current++;
+          frameCountRef.current++;
           
           // フレームレート制御（15fps目安）
-          if (frameCount.current % 2 !== 0) {
+          if (frameCountRef.current % 2 !== 0) {
             animationFrameRef.current = requestAnimationFrame(detectPose);
             return;
           }
@@ -120,7 +122,7 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
           }
 
           // 10秒でテスト終了
-          const elapsed = Date.now() - startTime.current;
+          const elapsed = Date.now() - startTimeRef.current;
           if (elapsed > 10000) {
             // 自動的にテスト完了（ストア内で処理される）
             console.log('✅ テスト完了（10秒経過）');
@@ -136,8 +138,8 @@ export const usePoseAnalysis = (videoElement: HTMLVideoElement | null) => {
     };
 
     if (testStatus === 'running') {
-      startTime.current = Date.now();
-      frameCount.current = 0;
+      startTimeRef.current = Date.now();
+      frameCountRef.current = 0;
       detectPose();
     }
 

@@ -1,4 +1,4 @@
-// src/ui/views/TestAnalysisView.tsx (最終完成版)
+// src/ui/views/TestAnalysisView.tsx (最終安定版)
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { CameraView } from '../components/CameraView';
@@ -42,10 +42,8 @@ export const TestAnalysisView: React.FC = () => {
     resetTest,
   } = useAppStore();
 
-  const { isModelReady } = usePoseAnalysis({
-    videoElement,
-    loop: !videoSrc,
-  });
+  // ★★★ usePoseAnalysisの呼び出しを安定版のシンプルな形式に戻す ★★★
+  const { isModelReady } = usePoseAnalysis(videoElement);
 
   useEffect(() => {
     if (videoElement) {
@@ -65,14 +63,18 @@ export const TestAnalysisView: React.FC = () => {
     }
   }, [videoElement]);
 
+  // ★★★ パフォーマンス最適化のため、useCallbackで関数をメモ化 ★★★
   const handleVideoElement = useCallback((video: HTMLVideoElement) => {
     setVideoElement(video);
   }, []);
 
   const handleStartTest = () => {
+    // 動画ファイルが選択されている場合は、そのvideo要素を解析対象に設定
     if (videoSrc && videoRefForUpload.current) {
       videoRefForUpload.current.play();
       setVideoElement(videoRefForUpload.current);
+    } else if (!videoSrc && videoElement) {
+      // ウェブカメラの場合、既にセットされているvideoElementをそのまま使う
     }
     startTest();
   };
@@ -132,12 +134,13 @@ export const TestAnalysisView: React.FC = () => {
             ) : (
               <CameraView onVideoElement={handleVideoElement} />
             )}
+            {/* landmarksはtestStatusに関わらず表示し、ちらつきを防ぐ */}
             {landmarks && videoSize.width > 0 && (
               <PoseOverlay
                 landmarks={landmarks}
                 videoWidth={videoSize.width}
                 videoHeight={videoSize.height}
-                isMirrored={!videoSrc}
+                isMirrored={!videoSrc} // ウェブカメラの時だけ反転
               />
             )}
           </div>
@@ -155,7 +158,6 @@ export const TestAnalysisView: React.FC = () => {
             {testStatus === 'completed' && <button className="reset-button" onClick={resetTest}>リセット</button>}
           </div>
         </div>
-
         <div className="results-section">
           {currentTest && currentTestResult ? (
             <div className="test-results">

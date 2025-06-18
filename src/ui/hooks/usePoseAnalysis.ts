@@ -1,7 +1,10 @@
 // src/ui/hooks/usePoseAnalysis.ts (MediaPipe版)
 
 import { useRef, useCallback, useState } from 'react';
-import { Landmark } from '../../types';
+import { Landmark, TestType, TestResult } from '../../types';
+import { StandingHipFlexionAnalyzer } from '../../inference/analyzers/standingHipFlexionAnalyzer';
+import { RockBackAnalyzer } from '../../inference/analyzers/rockBackAnalyzer';
+import { SittingKneeExtensionAnalyzer } from '../../inference/analyzers/sittingKneeExtensionAnalyzer';
 
 // MediaPipe types
 interface MediaPipeLandmark {
@@ -25,9 +28,16 @@ export const usePoseAnalysis = () => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [testResult, setTestResult] = useState<TestResult | null>(null);
   const detectorRef = useRef<any>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+  const landmarkHistoryRef = useRef<Landmark[][]>([]);
+  const analyzersRef = useRef({
+    [TestType.STANDING_HIP_FLEXION]: new StandingHipFlexionAnalyzer(),
+    [TestType.ROCK_BACK]: new RockBackAnalyzer(),
+    [TestType.SITTING_KNEE_EXTENSION]: new SittingKneeExtensionAnalyzer()
+  });
 
   // MediaPipe初期化
   const initializeMediaPipe = useCallback(async () => {
@@ -78,7 +88,7 @@ export const usePoseAnalysis = () => {
   }, []);
 
   // ポーズ検出の実行
-  const detectPose = useCallback(async (video: HTMLVideoElement) => {
+  const detectPose = useCallback(async (video: HTMLVideoElement, currentTest?: TestType) => {
     if (!detectorRef.current || !video) return;
 
     try {
@@ -99,10 +109,31 @@ export const usePoseAnalysis = () => {
         }));
         
         console.log(`✅ MediaPipe ランドマーク検出: ${convertedLandmarks.length}個`);
-        console.log('📊 最初のランドマーク:', convertedLandmarks[0]);
-        console.log('📊 可視性サンプル:', convertedLandmarks.slice(0, 5).map(l => l.visibility));
         
         setLandmarks(convertedLandmarks);
+        
+        // ランドマーク履歴に追加
+        landmarkHistoryRef.current.push(convertedLandmarks);
+        
+        // 履歴を最大100フレームに制限
+        if (landmarkHistoryRef.current.length > 100) {
+          landmarkHistoryRef.current.shift();
+        }
+        
+        // テストが実行中で十分なフレームがある場合、解析を実行
+        if (currentTest && landmarkHistoryRef.current.length >= 10) {
+          const analyzer = analyzersRef.current[currentTest];
+          if (analyzer) {
+            try {
+              const result = analyzer.analyze(convertedLandmarks, landmarkHistoryRef.current);
+              setTestResult(result);
+              console.log(`📊 ${currentTest} 解析結果:`, result);
+            } catch (analyzeError) {
+              console.error('❌ 解析エラー:', analyzeError);
+            }
+          }
+        }
+        
         setError(null);
       } else {
         console.log('⚠️ MediaPipe: ポーズが検出されませんでした');
@@ -116,7 +147,7 @@ export const usePoseAnalysis = () => {
   }, []);
 
   // 動画解析の開始
-  const startAnalysis = useCallback(async (video: HTMLVideoElement) => {
+  const startAnalysis = useCallback(async (video: HTMLVideoElement, currentTest?: TestType) => {
     console.log('🎯 MediaPipe動画解析開始');
     
     if (!detectorRef.current) {
@@ -126,6 +157,8 @@ export const usePoseAnalysis = () => {
 
     setIsAnalyzing(true);
     setError(null);
+    setTestResult(null);
+    landmarkHistoryRef.current = []; // 履歴をリセット
     videoRef.current = video;
 
     const analyzeFrame = async () => {
@@ -134,7 +167,7 @@ export const usePoseAnalysis = () => {
         return;
       }
 
-      await detectPose(videoRef.current);
+      await detectPose(videoRef.current, currentTest);
       
       // 次のフレーム解析をスケジュール
       animationFrameRef.current = requestAnimationFrame(analyzeFrame);
@@ -175,6 +208,7 @@ export const usePoseAnalysis = () => {
     landmarks,
     isAnalyzing,
     error,
+    testResult,
     startAnalysis,
     stopAnalysis,
     cleanup

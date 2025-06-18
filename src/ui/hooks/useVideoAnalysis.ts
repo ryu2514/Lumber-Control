@@ -1,5 +1,8 @@
 import { useRef, useCallback, useState } from 'react';
-import { Landmark } from '../../types';
+import { Landmark, TestType, TestResult } from '../../types';
+import { StandingHipFlexionAnalyzer } from '../../inference/analyzers/standingHipFlexionAnalyzer';
+import { RockBackAnalyzer } from '../../inference/analyzers/rockBackAnalyzer';
+import { SittingKneeExtensionAnalyzer } from '../../inference/analyzers/sittingKneeExtensionAnalyzer';
 
 // MediaPipe types
 interface MediaPipeLandmark {
@@ -24,8 +27,14 @@ export const useVideoAnalysis = () => {
   const [landmarks, setLandmarks] = useState<Landmark[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [progress, setProgress] = useState(0);
+  const [testResult, setTestResult] = useState<TestResult | null>(null);
   const detectorRef = useRef<any>(null);
   const isAnalyzingRef = useRef(false);
+  const analyzersRef = useRef({
+    [TestType.STANDING_HIP_FLEXION]: new StandingHipFlexionAnalyzer(),
+    [TestType.ROCK_BACK]: new RockBackAnalyzer(),
+    [TestType.SITTING_KNEE_EXTENSION]: new SittingKneeExtensionAnalyzer()
+  });
 
   // MediaPipe初期化
   const initializeMediaPipe = useCallback(async () => {
@@ -76,7 +85,7 @@ export const useVideoAnalysis = () => {
   }, []);
 
   // 動画ファイルの解析
-  const analyzeVideo = useCallback(async (video: HTMLVideoElement, onLandmarksUpdate?: (landmarks: Landmark[]) => void) => {
+  const analyzeVideo = useCallback(async (video: HTMLVideoElement, currentTest?: TestType, onLandmarksUpdate?: (landmarks: Landmark[]) => void) => {
     if (!detectorRef.current) {
       const initialized = await initializeMediaPipe();
       if (!initialized) return [];
@@ -85,6 +94,7 @@ export const useVideoAnalysis = () => {
     setIsAnalyzing(true);
     setError(null);
     setProgress(0);
+    setTestResult(null);
     isAnalyzingRef.current = true;
 
     const allLandmarks: Landmark[][] = [];
@@ -139,6 +149,24 @@ export const useVideoAnalysis = () => {
         setProgress(progressPercent);
       }
 
+      // 解析完了後、最終的なテスト結果を生成
+      if (currentTest && allLandmarks.length > 0) {
+        const analyzer = analyzersRef.current[currentTest];
+        if (analyzer) {
+          try {
+            // 最後のフレームのランドマークと全履歴を使用して解析
+            const lastFrame = allLandmarks[allLandmarks.length - 1];
+            if (lastFrame && lastFrame.length > 0) {
+              const result = analyzer.analyze(lastFrame, allLandmarks);
+              setTestResult(result);
+              console.log(`📊 動画 ${currentTest} 解析結果:`, result);
+            }
+          } catch (analyzeError) {
+            console.error('❌ 動画解析エラー:', analyzeError);
+          }
+        }
+      }
+
       console.log(`✅ 動画解析完了: ${allLandmarks.length}フレーム処理`);
       return allLandmarks;
 
@@ -172,6 +200,7 @@ export const useVideoAnalysis = () => {
     setLandmarks([]);
     setError(null);
     setProgress(0);
+    setTestResult(null);
   }, [stopAnalysis]);
 
   return {
@@ -179,6 +208,7 @@ export const useVideoAnalysis = () => {
     isAnalyzing,
     error,
     progress,
+    testResult,
     analyzeVideo,
     stopAnalysis,
     cleanup

@@ -24,12 +24,13 @@ export const TestAnalysisView: React.FC = () => {
     stopTest,
   } = useAppStore();
 
-  const { landmarks, isAnalyzing, error, startAnalysis, stopAnalysis } = usePoseAnalysis();
+  const { landmarks, isAnalyzing, error, testResult, startAnalysis, stopAnalysis } = usePoseAnalysis();
   const { 
     landmarks: videoLandmarks, 
     isAnalyzing: isVideoAnalyzing, 
     error: videoError, 
     progress: videoProgress,
+    testResult: videoTestResult,
     analyzeVideo, 
     stopAnalysis: stopVideoAnalysis 
   } = useVideoAnalysis();
@@ -123,23 +124,23 @@ export const TestAnalysisView: React.FC = () => {
 
   // 動画解析開始
   const handleStartVideoAnalysis = async () => {
-    if (videoElement && analysisMode === 'video') {
+    if (videoElement && analysisMode === 'video' && currentTest) {
       startTest();
-      await analyzeVideo(videoElement);
+      await analyzeVideo(videoElement, currentTest);
       stopTest();
     }
   };
 
   // 解析開始/停止
   useEffect(() => {
-    if (testStatus === 'running' && videoElement && analysisMode === 'camera' && !isAnalyzing) {
+    if (testStatus === 'running' && videoElement && analysisMode === 'camera' && !isAnalyzing && currentTest) {
       console.log('🎯 カメラテスト開始 - MediaPipe解析開始');
-      startAnalysis(videoElement);
+      startAnalysis(videoElement, currentTest);
     } else if (testStatus === 'idle' && isAnalyzing) {
       console.log('⏹️ テスト停止 - MediaPipe解析停止');
       stopAnalysis();
     }
-  }, [testStatus, videoElement, isAnalyzing, startAnalysis, stopAnalysis, analysisMode]);
+  }, [testStatus, videoElement, isAnalyzing, startAnalysis, stopAnalysis, analysisMode, currentTest]);
 
   // デフォルトテストを設定
   useEffect(() => {
@@ -315,6 +316,58 @@ export const TestAnalysisView: React.FC = () => {
             </button>
           )}
         </div>
+
+        {/* テスト結果表示 */}
+        {(testResult || videoTestResult) && (
+          <div className="mt-6 p-6 bg-gray-50 rounded-lg">
+            <h3 className="text-xl font-bold mb-4">📊 解析結果</h3>
+            {(() => {
+              const result = analysisMode === 'camera' ? testResult : videoTestResult;
+              if (!result) return null;
+              
+              return (
+                <div className="space-y-4">
+                  {/* スコア表示 */}
+                  <div className="flex items-center space-x-4">
+                    <div className="text-2xl font-bold">
+                      総合スコア: {Math.round(result.score)}/100
+                    </div>
+                    <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                      result.score >= 80 ? 'bg-green-100 text-green-800' :
+                      result.score >= 60 ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      {result.score >= 80 ? '良好' : result.score >= 60 ? '要改善' : '要注意'}
+                    </div>
+                  </div>
+
+                  {/* 詳細メトリクス */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    {Object.entries(result.metrics).map(([key, value]) => (
+                      <div key={key} className="bg-white p-3 rounded-lg">
+                        <div className="text-sm text-gray-600">{key}</div>
+                        <div className="text-lg font-semibold">
+                          {typeof value === 'number' ? Math.round(value) : value}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* フィードバック */}
+                  <div className="bg-blue-50 p-4 rounded-lg">
+                    <h4 className="font-medium text-blue-900 mb-2">💡 改善提案</h4>
+                    <p className="text-blue-800">{result.feedback}</p>
+                  </div>
+
+                  {/* 実行時間 */}
+                  <div className="text-sm text-gray-500">
+                    解析実行時刻: {new Date(result.timestamp).toLocaleString()}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        )}
       </div>
     </div>
   );

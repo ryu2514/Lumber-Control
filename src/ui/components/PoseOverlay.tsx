@@ -1,4 +1,4 @@
-// src/ui/components/PoseOverlay.tsx (MediaPipe版・位置ずれ修正)
+// src/ui/components/PoseOverlay.tsx (MediaPipe版・ビルドエラー修正)
 
 import React from 'react';
 import { Landmark } from '../../types';
@@ -90,11 +90,11 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
   // MediaPipe用可視性閾値
   const visibilityThreshold = 0.1;
 
-  const visibleLandmarks = landmarks.filter((landmark, index) => 
+  const visibleLandmarks = landmarks.filter((landmark, landmarkIndex) => 
     landmark && 
     typeof landmark.visibility === 'number' && 
     landmark.visibility > visibilityThreshold &&
-    mediapipeLandmarks.includes(index) &&
+    mediapipeLandmarks.includes(landmarkIndex) &&
     !isNaN(landmark.x) && !isNaN(landmark.y)
   );
 
@@ -130,7 +130,7 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
         }}
       >
         {/* 接続線 */}
-        {connections.map(([startIdx, endIdx], idx) => {
+        {connections.map(([startIdx, endIdx], connectionIdx) => {
           const start = landmarks[startIdx];
           const end = landmarks[endIdx];
           
@@ -145,7 +145,7 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
           
           return (
             <line
-              key={`line-${idx}`}
+              key={`line-${connectionIdx}`}
               x1={startPoint.x}
               y1={startPoint.y}
               x2={endPoint.x}
@@ -158,9 +158,9 @@ export const PoseOverlay: React.FC<PoseOverlayProps> = ({
         })}
         
         {/* ランドマークポイント */}
-        {visibleLandmarks.map((landmark, index) => {
-          const originalIndex = mediapipeLandmarks.find(idx => landmarks[idx] === landmark);
-          if (originalIndex === undefined) return null;
+        {visibleLandmarks.map((landmark) => {
+          const originalIndex = landmarks.findIndex(l => l === landmark);
+          if (originalIndex === -1) return null;
           
           const point = transformLandmark(landmark);
           

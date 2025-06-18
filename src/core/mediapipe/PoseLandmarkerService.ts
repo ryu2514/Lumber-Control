@@ -21,9 +21,6 @@ import {
   HIGH_SPEED_CONFIG,
   MEDIAPIPE_CDN,
   DEFAULT_ANALYSIS_OPTIONS,
-  PERFORMANCE_THRESHOLDS,
-  VISIBILITY_THRESHOLDS,
-  ERROR_CONFIG,
   DEBUG_CONFIG
 } from './config';
 
@@ -95,7 +92,7 @@ export class PoseLandmarkerService {
       this.performanceStats.startTime = performance.now();
 
       console.log('✅ MediaPipe Pose Landmarker 初期化完了');
-      return { success: true, detector: this.detector };
+      return { success: true, detector: this.detector || undefined };
 
     } catch (error) {
       const mediaError: MediaPipeError = {

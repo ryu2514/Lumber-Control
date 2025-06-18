@@ -123,13 +123,6 @@ export interface MediaPipeDebugInfo {
 // Global MediaPipe Vision type
 declare global {
   interface Window {
-    MediaPipeTasksVision?: {
-      FilesetResolver: {
-        forVisionTasks(wasmLoaderPath: string): Promise<any>;
-      };
-      PoseLandmarker: {
-        createFromOptions(filesetResolver: any, options: any): Promise<PoseLandmarkerInstance>;
-      };
-    };
+    MediaPipeTasksVision?: any;
   }
 }

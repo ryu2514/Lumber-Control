@@ -211,6 +211,7 @@ export const useVideoAnalysis = () => {
     testResult,
     analyzeVideo,
     stopAnalysis,
-    cleanup
+    cleanup,
+    initializeMediaPipe
   };
 };

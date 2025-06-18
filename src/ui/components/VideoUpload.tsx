@@ -17,17 +17,29 @@ export const VideoUpload: React.FC<VideoUploadProps> = React.memo(({ onVideoSele
       return;
     }
 
+    console.log('📁 動画ファイル選択:', file.name, file.type, file.size);
     setSelectedFile(file);
     onVideoFile(file);
 
-    const videoElement = videoRef.current;
-    if (videoElement) {
-      const url = URL.createObjectURL(file);
-      videoElement.src = url;
-      videoElement.onloadedmetadata = () => {
-        onVideoSelected(videoElement);
-      };
-    }
+    // ビデオ要素の準備を遅延実行
+    setTimeout(() => {
+      const videoElement = videoRef.current;
+      if (videoElement) {
+        const url = URL.createObjectURL(file);
+        videoElement.src = url;
+        videoElement.onloadedmetadata = () => {
+          console.log('📹 動画メタデータ読み込み完了:', {
+            duration: videoElement.duration,
+            width: videoElement.videoWidth,
+            height: videoElement.videoHeight
+          });
+          onVideoSelected(videoElement);
+        };
+        videoElement.onerror = (error) => {
+          console.error('❌ 動画読み込みエラー:', error);
+        };
+      }
+    }, 100);
   }, [onVideoSelected, onVideoFile]);
 
   const handleFileInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {

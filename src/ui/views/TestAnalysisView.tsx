@@ -34,8 +34,10 @@ export const TestAnalysisView: React.FC = () => {
     progress: videoProgress,
     testResult: videoTestResult,
     analyzeVideo, 
-    stopAnalysis: stopVideoAnalysis 
+    stopAnalysis: stopVideoAnalysis,
+    initializeMediaPipe: initializeVideoMediaPipe 
   } = useVideoAnalysis();
+  const [isVideoInitialized, setIsVideoInitialized] = useState(false);
 
   // テスト名のマッピング
   const getTestName = (testType: TestType) => {
@@ -83,30 +85,67 @@ export const TestAnalysisView: React.FC = () => {
     }
   };
 
+  // 動画用MediaPipe初期化を手動実行
+  const handleInitializeVideoMediaPipe = async () => {
+    console.log('🚀 動画用MediaPipe初期化開始');
+    const success = await initializeVideoMediaPipe();
+    setIsVideoInitialized(success);
+    if (success) {
+      console.log('✅ 動画用MediaPipe初期化成功');
+    } else {
+      console.error('❌ 動画用MediaPipe初期化失敗');
+    }
+  };
+
   // 動画ファイル選択時の処理
   const handleVideoSelected = (video: HTMLVideoElement) => {
-    // ビデオコンテナに追加
-    if (videoContainerRef.current) {
-      videoContainerRef.current.innerHTML = '';
-      videoContainerRef.current.appendChild(video);
-    }
+    console.log('📹 動画要素受信:', video, {
+      duration: video.duration,
+      width: video.videoWidth,
+      height: video.videoHeight,
+      readyState: video.readyState
+    });
     
     setVideoElement(video);
-    setVideoSize({ width: video.videoWidth || 640, height: video.videoHeight || 480 });
+    setVideoSize({ 
+      width: video.videoWidth || 640, 
+      height: video.videoHeight || 480 
+    });
     
-    console.log('📹 動画ファイル選択完了');
+    console.log('📹 動画ファイル選択完了、要素設定済み');
   };
 
   const handleVideoFile = (file: File) => {
+    console.log('📁 動画ファイル設定:', file.name);
     setUploadedVideo(file);
   };
 
   // 動画解析開始
   const handleStartVideoAnalysis = async () => {
-    if (videoElement && analysisMode === 'video' && currentTest) {
+    console.log('🎬 動画解析開始ボタンクリック:', {
+      hasVideoElement: !!videoElement,
+      analysisMode,
+      currentTest,
+      uploadedVideo: uploadedVideo?.name
+    });
+
+    if (videoElement && analysisMode === 'video' && currentTest && uploadedVideo) {
+      console.log('🚀 動画解析開始');
       startTest();
-      await analyzeVideo(videoElement, currentTest);
+      try {
+        await analyzeVideo(videoElement, currentTest);
+        console.log('✅ 動画解析完了');
+      } catch (error) {
+        console.error('❌ 動画解析エラー:', error);
+      }
       stopTest();
+    } else {
+      console.warn('⚠️ 動画解析開始条件不足:', {
+        videoElement: !!videoElement,
+        analysisMode,
+        currentTest,
+        uploadedVideo: !!uploadedVideo
+      });
     }
   };
 
@@ -265,13 +304,26 @@ export const TestAnalysisView: React.FC = () => {
         {process.env.NODE_ENV === 'development' && (
           <div className="mb-4 p-4 bg-gray-100 rounded-lg text-sm">
             <h4 className="font-bold mb-2">🔧 デバッグ情報</h4>
-            <div className="grid grid-cols-2 gap-2">
-              <div>カメラ: {videoElement ? '✅' : '❌'}</div>
-              <div>MediaPipe: {isInitialized ? '✅' : '❌'}</div>
+            <div className="grid grid-cols-3 gap-2">
+              {analysisMode === 'camera' ? (
+                <>
+                  <div>カメラ: {videoElement ? '✅' : '❌'}</div>
+                  <div>MediaPipe: {isInitialized ? '✅' : '❌'}</div>
+                  <div>解析中: {isAnalyzing ? '✅' : '❌'}</div>
+                  <div>ランドマーク: {landmarks.length}/33</div>
+                </>
+              ) : (
+                <>
+                  <div>動画ファイル: {uploadedVideo ? '✅' : '❌'}</div>
+                  <div>動画要素: {videoElement ? '✅' : '❌'}</div>
+                  <div>MediaPipe: {isVideoInitialized ? '✅' : '❌'}</div>
+                  <div>解析中: {isVideoAnalyzing ? '✅' : '❌'}</div>
+                  <div>進捗: {Math.round(videoProgress)}%</div>
+                  <div>ランドマーク: {videoLandmarks.length}/33</div>
+                </>
+              )}
               <div>テスト: {currentTest || '未選択'}</div>
               <div>モード: {analysisMode}</div>
-              <div>解析中: {isAnalyzing ? '✅' : '❌'}</div>
-              <div>ランドマーク: {landmarks.length}/33</div>
             </div>
           </div>
         )}
@@ -285,6 +337,16 @@ export const TestAnalysisView: React.FC = () => {
               className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
             >
               📦 MediaPipe初期化
+            </button>
+          )}
+          
+          {/* 動画用MediaPipe初期化ボタン */}
+          {analysisMode === 'video' && !isVideoInitialized && (
+            <button
+              onClick={handleInitializeVideoMediaPipe}
+              className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              📦 動画用MediaPipe初期化
             </button>
           )}
 
@@ -317,7 +379,7 @@ export const TestAnalysisView: React.FC = () => {
               {analysisMode === 'video' && (
                 <button
                   onClick={handleStartVideoAnalysis}
-                  disabled={!videoElement || !uploadedVideo}
+                  disabled={!videoElement || !uploadedVideo || !currentTest || !isVideoInitialized}
                   className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-400 transition-colors"
                 >
                   動画解析開始

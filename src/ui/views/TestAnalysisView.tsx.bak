@@ -1,0 +1,159 @@
+// TestAnalysisView.tsx (MediaPipe版・完全修正版)
+
+import React, { useRef, useEffect, useState } from 'react';
+import { useAppStore } from '../../store/appStore';
+import { usePoseAnalysis } from '../hooks/usePoseAnalysis';
+import { PoseOverlay } from '../components/PoseOverlay';
+
+export const TestAnalysisView: React.FC = () => {
+  const videoContainerRef = useRef<HTMLDivElement>(null);
+  const [videoSize, setVideoSize] = useState({ width: 0, height: 0 });
+
+  const {
+    videoElement,
+    currentTest,
+    resetTest,
+  } = useAppStore();
+
+  const { landmarks, isAnalyzing, error, startAnalysis, stopAnalysis } = usePoseAnalysis();
+
+  console.log('🎯 TestAnalysisView render:', {
+    hasVideo: !!videoElement,
+    currentTest: currentTest?.name,
+    landmarksCount: landmarks.length,
+    isAnalyzing,
+    videoSize
+  });
+
+  // ビデオサイズ更新
+  useEffect(() => {
+    const updateVideoSize = () => {
+      if (videoElement && videoContainerRef.current) {
+        const videoWidth = videoElement.videoWidth;
+        const videoHeight = videoElement.videoHeight;
+
+        console.log('📐 Video size updated:', {
+          video: { width: videoWidth, height: videoHeight }
+        });
+
+        setVideoSize({ width: videoWidth, height: videoHeight });
+      }
+    };
+
+    if (videoElement) {
+      videoElement.addEventListener('loadedmetadata', updateVideoSize);
+      videoElement.addEventListener('resize', updateVideoSize);
+      
+      if (videoElement.readyState >= 1) {
+        updateVideoSize();
+      }
+
+      return () => {
+        videoElement.removeEventListener('loadedmetadata', updateVideoSize);
+        videoElement.removeEventListener('resize', updateVideoSize);
+      };
+    }
+  }, [videoElement]);
+
+  // 動画再生時に解析開始
+  useEffect(() => {
+    if (videoElement && !videoElement.paused && videoSize.width > 0 && !isAnalyzing) {
+      console.log('🎯 Starting MediaPipe analysis');
+      startAnalysis(videoElement);
+    }
+
+    return () => {
+      if (isAnalyzing) {
+        stopAnalysis();
+      }
+    };
+  }, [videoElement, videoSize.width, startAnalysis, stopAnalysis, isAnalyzing]);
+
+  if (!currentTest) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <p className="text-gray-500">テストが選択されていません</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-lg shadow-lg p-6">
+        <h2 className="text-2xl font-bold mb-4">{currentTest.name}</h2>
+        <p className="text-gray-600 mb-6">{currentTest.description}</p>
+
+        {/* 動画表示エリア */}
+        <div className="relative mb-6">
+          <div 
+            ref={videoContainerRef}
+            className="relative w-full bg-black rounded-lg overflow-hidden"
+            style={{ aspectRatio: '16/9' }}
+          >
+            {videoElement && (
+              <>
+                {/* MediaPipe ポーズオーバーレイ */}
+                <PoseOverlay
+                  landmarks={landmarks}
+                  videoWidth={videoSize.width}
+                  videoHeight={videoSize.height}
+                  containerWidth={videoContainerRef.current?.clientWidth}
+                  containerHeight={videoContainerRef.current?.clientHeight}
+                  isMirrored={true}
+                />
+              </>
+            )}
+          </div>
+
+          {/* ステータス表示 */}
+          <div className="absolute top-4 left-4 bg-black bg-opacity-70 text-white px-3 py-2 rounded-lg">
+            {isAnalyzing ? (
+              <div className="flex items-center space-x-2">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                <span>📡 MediaPipe解析中...</span>
+              </div>
+            ) : (
+              <span>📡 MediaPipe準備完了</span>
+            )}
+          </div>
+
+          {/* エラー表示 */}
+          {error && (
+            <div className="absolute bottom-4 left-4 bg-red-600 text-white px-3 py-2 rounded-lg max-w-md">
+              ❌ {error}
+            </div>
+          )}
+
+          {/* ランドマーク情報 */}
+          <div className="absolute bottom-4 right-4 bg-black bg-opacity-70 text-white px-3 py-2 rounded-lg">
+            🎯 検出: {landmarks.length}/33 点
+          </div>
+        </div>
+
+        {/* コントロールボタン */}
+        <div className="flex space-x-4">
+          <button
+            onClick={resetTest}
+            className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+          >
+            リセット
+          </button>
+          
+          <button
+            onClick={() => {
+              if (isAnalyzing) {
+                stopAnalysis();
+              } else if (videoElement) {
+                startAnalysis(videoElement);
+              }
+            }}
+            disabled={!videoElement}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
+          >
+            {isAnalyzing ? '解析停止' : '解析開始'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};

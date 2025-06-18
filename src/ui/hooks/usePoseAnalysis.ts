@@ -44,26 +44,43 @@ export const usePoseAnalysis = () => {
     try {
       console.log('🚀 MediaPipe初期化開始...');
       
+      // 既に初期化済みかチェック
+      if (detectorRef.current) {
+        console.log('✅ MediaPipe既に初期化済み');
+        return true;
+      }
+      
       // MediaPipe CDNから動的インポート
       if (!window.MediaPipeTasksVision) {
+        console.log('📦 MediaPipe CDNスクリプト読み込み中...');
         const script = document.createElement('script');
         script.src = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/vision_bundle.js';
         document.head.appendChild(script);
         
         await new Promise((resolve, reject) => {
-          script.onload = resolve;
-          script.onerror = reject;
+          script.onload = () => {
+            console.log('✅ MediaPipe CDNスクリプト読み込み完了');
+            resolve(undefined);
+          };
+          script.onerror = (error) => {
+            console.error('❌ MediaPipe CDNスクリプト読み込みエラー:', error);
+            reject(error);
+          };
         });
       }
 
       const vision = window.MediaPipeTasksVision;
+      console.log('📦 MediaPipe Vision:', vision);
       
       // FilesetResolverを初期化
+      console.log('🔧 FilesetResolver初期化中...');
       const filesetResolver = await vision.FilesetResolver.forVisionTasks(
         'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
       );
+      console.log('✅ FilesetResolver初期化完了');
       
       // PoseLandmarkerを作成
+      console.log('🔧 PoseLandmarker作成中...');
       const poseLandmarker = await vision.PoseLandmarker.createFromOptions(filesetResolver, {
         baseOptions: {
           modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
@@ -78,7 +95,7 @@ export const usePoseAnalysis = () => {
       });
       
       detectorRef.current = poseLandmarker;
-      console.log('✅ MediaPipe初期化完了');
+      console.log('✅ MediaPipe完全初期化完了', poseLandmarker);
       return true;
     } catch (error) {
       console.error('❌ MediaPipe初期化エラー:', error);
@@ -211,6 +228,7 @@ export const usePoseAnalysis = () => {
     testResult,
     startAnalysis,
     stopAnalysis,
-    cleanup
+    cleanup,
+    initializeMediaPipe
   };
 };

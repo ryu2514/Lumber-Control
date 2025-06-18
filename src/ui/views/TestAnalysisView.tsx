@@ -5,6 +5,7 @@ import { useAppStore } from '../../state/store';
 import { usePoseAnalysis } from '../hooks/usePoseAnalysis';
 import { useVideoAnalysis } from '../hooks/useVideoAnalysis';
 import { PoseOverlay } from '../components/PoseOverlay';
+import { CameraView } from '../components/CameraView';
 import { VideoUpload } from '../components/VideoUpload';
 import { TestType } from '../../types';
 
@@ -24,7 +25,8 @@ export const TestAnalysisView: React.FC = () => {
     stopTest,
   } = useAppStore();
 
-  const { landmarks, isAnalyzing, error, testResult, startAnalysis, stopAnalysis } = usePoseAnalysis();
+  const { landmarks, isAnalyzing, error, testResult, startAnalysis, stopAnalysis, initializeMediaPipe } = usePoseAnalysis();
+  const [isInitialized, setIsInitialized] = useState(false);
   const { 
     landmarks: videoLandmarks, 
     isAnalyzing: isVideoAnalyzing, 
@@ -62,47 +64,24 @@ export const TestAnalysisView: React.FC = () => {
     }
   };
 
-  // カメラ初期化
-  useEffect(() => {
-    if (analysisMode === 'camera') {
-      const initCamera = async () => {
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({
-            video: { width: 640, height: 480 }
-          });
-          
-          const video = document.createElement('video');
-          video.srcObject = stream;
-          video.autoplay = true;
-          video.playsInline = true;
-          video.muted = true;
-          
-          // ビデオコンテナに追加
-          if (videoContainerRef.current) {
-            videoContainerRef.current.innerHTML = '';
-            videoContainerRef.current.appendChild(video);
-          }
-          
-          setVideoElement(video);
-          setVideoSize({ width: 640, height: 480 });
-          
-          console.log('📹 カメラ初期化完了');
-        } catch (error) {
-          console.error('❌ カメラ初期化エラー:', error);
-        }
-      };
+  // カメラビデオ要素を受け取る
+  const handleVideoElement = (video: HTMLVideoElement) => {
+    setVideoElement(video);
+    setVideoSize({ width: 640, height: 480 });
+    console.log('📹 カメラ要素受信完了', video);
+  };
 
-      initCamera();
+  // MediaPipe初期化を手動実行
+  const handleInitializeMediaPipe = async () => {
+    console.log('🚀 手動MediaPipe初期化開始');
+    const success = await initializeMediaPipe();
+    setIsInitialized(success);
+    if (success) {
+      console.log('✅ MediaPipe初期化成功');
+    } else {
+      console.error('❌ MediaPipe初期化失敗');
     }
-
-    return () => {
-      // クリーンアップ
-      if (videoElement?.srcObject) {
-        const stream = videoElement.srcObject as MediaStream;
-        stream.getTracks().forEach(track => track.stop());
-      }
-    };
-  }, [analysisMode]);
+  };
 
   // 動画ファイル選択時の処理
   const handleVideoSelected = (video: HTMLVideoElement) => {
@@ -133,6 +112,14 @@ export const TestAnalysisView: React.FC = () => {
 
   // 解析開始/停止
   useEffect(() => {
+    console.log('🔍 解析状態チェック:', {
+      testStatus,
+      hasVideoElement: !!videoElement,
+      analysisMode,
+      isAnalyzing,
+      currentTest
+    });
+
     if (testStatus === 'running' && videoElement && analysisMode === 'camera' && !isAnalyzing && currentTest) {
       console.log('🎯 カメラテスト開始 - MediaPipe解析開始');
       startAnalysis(videoElement, currentTest);
@@ -211,6 +198,11 @@ export const TestAnalysisView: React.FC = () => {
             className="relative w-full bg-black rounded-lg overflow-hidden"
             style={{ aspectRatio: '4/3', minHeight: '400px' }}
           >
+            {/* カメラビュー */}
+            {analysisMode === 'camera' && (
+              <CameraView onVideoElement={handleVideoElement} />
+            )}
+            
             {/* MediaPipe ポーズオーバーレイ */}
             <PoseOverlay
               landmarks={analysisMode === 'camera' ? landmarks : videoLandmarks}
@@ -269,8 +261,33 @@ export const TestAnalysisView: React.FC = () => {
           </select>
         </div>
 
+        {/* デバッグ情報 */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mb-4 p-4 bg-gray-100 rounded-lg text-sm">
+            <h4 className="font-bold mb-2">🔧 デバッグ情報</h4>
+            <div className="grid grid-cols-2 gap-2">
+              <div>カメラ: {videoElement ? '✅' : '❌'}</div>
+              <div>MediaPipe: {isInitialized ? '✅' : '❌'}</div>
+              <div>テスト: {currentTest || '未選択'}</div>
+              <div>モード: {analysisMode}</div>
+              <div>解析中: {isAnalyzing ? '✅' : '❌'}</div>
+              <div>ランドマーク: {landmarks.length}/33</div>
+            </div>
+          </div>
+        )}
+
         {/* コントロールボタン */}
         <div className="flex space-x-4">
+          {/* MediaPipe初期化ボタン */}
+          {analysisMode === 'camera' && !isInitialized && (
+            <button
+              onClick={handleInitializeMediaPipe}
+              className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              📦 MediaPipe初期化
+            </button>
+          )}
+
           <button
             onClick={resetTest}
             className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
@@ -283,8 +300,15 @@ export const TestAnalysisView: React.FC = () => {
             <>
               {analysisMode === 'camera' && (
                 <button
-                  onClick={startTest}
-                  disabled={!videoElement}
+                  onClick={() => {
+                    console.log('🚀 解析開始ボタンクリック', { videoElement, currentTest });
+                    if (videoElement && currentTest) {
+                      startTest();
+                    } else {
+                      console.warn('⚠️ 開始条件不足:', { videoElement: !!videoElement, currentTest });
+                    }
+                  }}
+                  disabled={!videoElement || !currentTest || !isInitialized}
                   className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors"
                 >
                   リアルタイム解析開始

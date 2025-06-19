@@ -2,7 +2,6 @@ import { useState, useRef, useEffect } from 'react'
 import { TestType, TestAnalysis, PoseAnalysisResult } from './types'
 import { MediaPipeService } from './mediapipe'
 import { LumbarControlEvaluator } from './evaluator'
-import { SpinalAngleCalculator, SpinalAngles, createSpinalAngleCalculator } from './spinalAngles'
 import { Tabs, Tab, TabContent } from './components/Tabs'
 import { TestProtocol } from './components/TestProtocols'
 
@@ -13,13 +12,11 @@ export function PoseAnalyzer() {
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [results, setResults] = useState<TestAnalysis | null>(null)
   const [currentPose, setCurrentPose] = useState<PoseAnalysisResult | null>(null)
-  const [spinalAngles, setSpinalAngles] = useState<SpinalAngles | null>(null)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const mediaService = useRef<MediaPipeService>(new MediaPipeService())
   const evaluator = useRef<LumbarControlEvaluator | null>(null)
-  const spinalCalculator = useRef<SpinalAngleCalculator>(createSpinalAngleCalculator())
   const analysisInterval = useRef<number | null>(null)
 
   const initializeCamera = async () => {
@@ -46,24 +43,14 @@ export function PoseAnalyzer() {
     if (!isReady || !videoRef.current) return
     
     evaluator.current = new LumbarControlEvaluator(activeTab)
-    spinalCalculator.current.resetFilters()
     setIsRecording(true)
     setResults(null)
-    setSpinalAngles(null)
 
     analysisInterval.current = window.setInterval(async () => {
       const poseResult = await mediaService.current.detectPose(videoRef.current!)
       if (poseResult && evaluator.current) {
         setCurrentPose(poseResult)
         evaluator.current.addAnalysisData(poseResult)
-        
-        // Calculate spinal angles if world landmarks are available
-        if (poseResult.landmarks.worldLandmarks?.[0]) {
-          const angles = spinalCalculator.current.calculateAngles(
-            poseResult.landmarks.worldLandmarks[0]
-          )
-          setSpinalAngles(angles)
-        }
       }
     }, 100)
   }
@@ -186,14 +173,6 @@ export function PoseAnalyzer() {
                   className="absolute inset-0 w-full h-full pointer-events-none"
                 />
                 
-                {/* Angle Display Overlay */}
-                {spinalAngles && (
-                  <div className="absolute top-4 left-4 bg-black bg-opacity-75 text-white p-3 rounded-lg space-y-1 text-sm">
-                    <div>腰椎屈曲: <span className="font-bold">{spinalAngles.lumbarFlexionAngle}°</span></div>
-                    <div>左股関節: <span className="font-bold">{spinalAngles.hipFlexionAngleLeft}°</span></div>
-                    <div>右股関節: <span className="font-bold">{spinalAngles.hipFlexionAngleRight}°</span></div>
-                  </div>
-                )}
               </div>
             </div>
 

@@ -297,7 +297,7 @@ export function VideoAnalyzerFixed2() {
           video.currentTime = time
           
           // Wait for seek with shorter timeout
-          await new Promise<void>((resolve, reject) => {
+          await new Promise<void>((resolve) => {
             const timeout = setTimeout(() => {
               console.warn(`フレーム ${frame}: シーク timeout`)
               resolve() // Continue instead of failing

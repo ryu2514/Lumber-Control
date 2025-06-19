@@ -3,7 +3,9 @@ import { PoseAnalysisResult, TestAnalysis, TestType } from './types'
 export class LumbarControlEvaluator {
   private analysisData: PoseAnalysisResult[] = []
   
-  constructor(private _testType: TestType) {}
+  constructor(_testType: TestType) {
+    // テストタイプを受け取るが、現在は使用しない
+  }
 
   addAnalysisData(data: PoseAnalysisResult): void {
     this.analysisData.push(data)

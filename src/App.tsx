@@ -1,9 +1,9 @@
-import { VideoAnalyzerDebug } from './VideoAnalyzerDebug'
+import { VideoAnalyzerSimple } from './VideoAnalyzerSimple'
 
 function App() {
   return (
     <div className="min-h-screen bg-gray-50">
-      <VideoAnalyzerDebug />
+      <VideoAnalyzerSimple />
     </div>
   )
 }

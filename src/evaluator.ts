@@ -3,7 +3,7 @@ import { PoseAnalysisResult, TestAnalysis, TestType } from './types'
 export class LumbarControlEvaluator {
   private analysisData: PoseAnalysisResult[] = []
   
-  constructor(private testType: TestType) {}
+  constructor(private _testType: TestType) {}
 
   addAnalysisData(data: PoseAnalysisResult): void {
     this.analysisData.push(data)

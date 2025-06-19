@@ -1,4 +1,3 @@
-import React from 'react'
 import { TestType } from '../types'
 
 interface TestProtocolProps {

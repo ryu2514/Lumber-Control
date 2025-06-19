@@ -1,9 +1,9 @@
-import { PoseAnalyzer } from './PoseAnalyzer'
+import { SimplePoseAnalyzer } from './SimplePoseAnalyzer'
 
 function App() {
   return (
     <div className="min-h-screen bg-gray-50">
-      <PoseAnalyzer />
+      <SimplePoseAnalyzer />
     </div>
   )
 }

@@ -2,25 +2,24 @@ import { useState, useRef, useEffect } from 'react'
 import { TestType, TestAnalysis, PoseAnalysisResult } from './types'
 import { MediaPipeService } from './mediapipe'
 import { LumbarControlEvaluator } from './evaluator'
-
-const TEST_NAMES = {
-  [TestType.STANDING_HIP_FLEXION]: '立位股関節屈曲テスト',
-  [TestType.ROCK_BACK]: '四つ這い後方移動テスト',
-  [TestType.SITTING_KNEE_EXTENSION]: '座位膝伸展テスト'
-}
+import { SpinalAngleCalculator, SpinalAngles, createSpinalAngleCalculator } from './spinalAngles'
+import { Tabs, Tab, TabContent } from './components/Tabs'
+import { TestProtocol } from './components/TestProtocols'
 
 export function PoseAnalyzer() {
-  const [selectedTest, setSelectedTest] = useState<TestType | null>(null)
+  const [activeTab, setActiveTab] = useState<TestType>(TestType.STANDING_HIP_FLEXION)
   const [isReady, setIsReady] = useState(false)
   const [isRecording, setIsRecording] = useState(false)
   const [isAnalyzing, setIsAnalyzing] = useState(false)
   const [results, setResults] = useState<TestAnalysis | null>(null)
   const [currentPose, setCurrentPose] = useState<PoseAnalysisResult | null>(null)
+  const [spinalAngles, setSpinalAngles] = useState<SpinalAngles | null>(null)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const mediaService = useRef<MediaPipeService>(new MediaPipeService())
   const evaluator = useRef<LumbarControlEvaluator | null>(null)
+  const spinalCalculator = useRef<SpinalAngleCalculator>(createSpinalAngleCalculator())
   const analysisInterval = useRef<number | null>(null)
 
   const initializeCamera = async () => {
@@ -44,17 +43,27 @@ export function PoseAnalyzer() {
   }
 
   const startRecording = () => {
-    if (!selectedTest || !videoRef.current) return
+    if (!isReady || !videoRef.current) return
     
-    evaluator.current = new LumbarControlEvaluator(selectedTest)
+    evaluator.current = new LumbarControlEvaluator(activeTab)
+    spinalCalculator.current.resetFilters()
     setIsRecording(true)
     setResults(null)
+    setSpinalAngles(null)
 
     analysisInterval.current = window.setInterval(async () => {
       const poseResult = await mediaService.current.detectPose(videoRef.current!)
       if (poseResult && evaluator.current) {
         setCurrentPose(poseResult)
         evaluator.current.addAnalysisData(poseResult)
+        
+        // Calculate spinal angles if world landmarks are available
+        if (poseResult.landmarks.worldLandmarks?.[0]) {
+          const angles = spinalCalculator.current.calculateAngles(
+            poseResult.landmarks.worldLandmarks[0]
+          )
+          setSpinalAngles(angles)
+        }
       }
     }, 100)
   }
@@ -126,122 +135,166 @@ export function PoseAnalyzer() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto p-4 space-y-6">
-      <h1 className="text-3xl font-bold text-center">理学療法士向け姿勢解析ツール</h1>
+    <div className="max-w-7xl mx-auto p-4 space-y-6">
+      <div className="text-center">
+        <h1 className="text-3xl font-bold text-gray-900 mb-2">
+          理学療法士向け姿勢解析ツール
+        </h1>
+        <p className="text-gray-600">
+          MediaPipe Pose Landmarkerを使用した腰椎モーターコントロール評価
+        </p>
+      </div>
       
       {!isReady ? (
-        <div className="text-center">
-          <button 
-            onClick={initializeCamera}
-            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-          >
-            カメラ・MediaPipe初期化
-          </button>
+        <div className="bg-white rounded-lg border shadow-sm p-8 text-center">
+          <div className="space-y-4">
+            <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto">
+              <span className="text-2xl">🎥</span>
+            </div>
+            <h2 className="text-xl font-semibold text-gray-900">システム初期化</h2>
+            <p className="text-gray-600">カメラとMediaPipeを初期化してください</p>
+            <button 
+              onClick={initializeCamera}
+              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
+            >
+              🚀 初期化開始
+            </button>
+          </div>
         </div>
       ) : (
-        <>
-          {!selectedTest ? (
-            <div className="space-y-4">
-              <h2 className="text-xl font-semibold">テストを選択</h2>
-              <div className="grid md:grid-cols-3 gap-4">
-                {Object.entries(TEST_NAMES).map(([testType, name]) => (
-                  <button
-                    key={testType}
-                    onClick={() => setSelectedTest(testType as TestType)}
-                    className="p-4 border rounded-lg hover:bg-gray-50 text-left"
-                  >
-                    <h3 className="font-medium">{name}</h3>
-                  </button>
-                ))}
+        <div className="grid lg:grid-cols-3 gap-6">
+          {/* Camera View */}
+          <div className="lg:col-span-2 space-y-4">
+            <div className="bg-white rounded-lg border shadow-sm overflow-hidden">
+              <div className="p-4 border-b bg-gray-50">
+                <h2 className="text-lg font-semibold flex items-center">
+                  <span className="w-8 h-8 bg-green-100 text-green-600 rounded-full flex items-center justify-center text-sm mr-3">
+                    📹
+                  </span>
+                  カメラ映像
+                </h2>
               </div>
-            </div>
-          ) : (
-            <div className="grid lg:grid-cols-2 gap-6">
-              <div className="space-y-4">
-                <div className="relative">
-                  <video
-                    ref={videoRef}
-                    className="w-full aspect-video bg-gray-100 rounded-lg"
-                    playsInline
-                    muted
-                  />
-                  <canvas
-                    ref={canvasRef}
-                    className="absolute inset-0 w-full h-full pointer-events-none"
-                  />
-                </div>
+              <div className="relative aspect-video bg-gray-100">
+                <video
+                  ref={videoRef}
+                  className="w-full h-full object-cover"
+                  playsInline
+                  muted
+                />
+                <canvas
+                  ref={canvasRef}
+                  className="absolute inset-0 w-full h-full pointer-events-none"
+                />
                 
-                <div className="flex gap-2">
-                  <button
-                    onClick={isRecording ? stopRecording : startRecording}
-                    className={`flex-1 py-2 px-4 rounded-lg ${
-                      isRecording 
-                        ? 'bg-red-600 hover:bg-red-700 text-white' 
-                        : 'bg-green-600 hover:bg-green-700 text-white'
-                    }`}
-                  >
-                    {isRecording ? '録画停止' : '録画開始'}
-                  </button>
-                  <button
-                    onClick={() => setSelectedTest(null)}
-                    className="px-4 py-2 border rounded-lg hover:bg-gray-50"
-                  >
-                    テスト変更
-                  </button>
-                </div>
-                
-                <div className="p-4 bg-gray-50 rounded-lg">
-                  <h3 className="font-medium">{TEST_NAMES[selectedTest]}</h3>
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                {isAnalyzing ? (
-                  <div className="text-center py-8">
-                    <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-                    <p>解析中...</p>
-                  </div>
-                ) : results ? (
-                  <div className="space-y-4">
-                    <h3 className="text-xl font-semibold">評価結果</h3>
-                    <div className="grid grid-cols-2 gap-4">
-                      {[
-                        { key: 'lumbarStability', label: '腰椎安定性' },
-                        { key: 'trunkControl', label: '体幹制御' },
-                        { key: 'movementPattern', label: '動作パターン' },
-                        { key: 'compensatoryMovement', label: '代償動作' }
-                      ].map(({ key, label }) => {
-                        const score = results[key as keyof TestAnalysis] as number
-                        const { label: scoreLabel, color } = getScoreLabel(score)
-                        return (
-                          <div key={key} className="p-3 border rounded-lg">
-                            <div className="text-sm text-gray-600">{label}</div>
-                            <div className={`text-lg font-bold ${color}`}>{scoreLabel}</div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                    <div>
-                      <h4 className="font-medium mb-2">推奨事項</h4>
-                      <ul className="space-y-1">
-                        {results.recommendations.map((rec, index) => (
-                          <li key={index} className="text-sm text-gray-700 flex items-start">
-                            <span className="text-blue-600 mr-2">•</span>
-                            {rec}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-gray-500">
-                    テストを実行すると結果が表示されます
+                {/* Angle Display Overlay */}
+                {spinalAngles && (
+                  <div className="absolute top-4 left-4 bg-black bg-opacity-75 text-white p-3 rounded-lg space-y-1 text-sm">
+                    <div>腰椎屈曲: <span className="font-bold">{spinalAngles.lumbarFlexionAngle}°</span></div>
+                    <div>左股関節: <span className="font-bold">{spinalAngles.hipFlexionAngleLeft}°</span></div>
+                    <div>右股関節: <span className="font-bold">{spinalAngles.hipFlexionAngleRight}°</span></div>
                   </div>
                 )}
               </div>
             </div>
-          )}
-        </>
+
+            {/* Test Results */}
+            {(isAnalyzing || results) && (
+              <div className="bg-white rounded-lg border shadow-sm">
+                <div className="p-4 border-b bg-gray-50">
+                  <h2 className="text-lg font-semibold">📊 評価結果</h2>
+                </div>
+                <div className="p-6">
+                  {isAnalyzing ? (
+                    <div className="text-center py-8">
+                      <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full mx-auto mb-4"></div>
+                      <p className="text-gray-600">解析中...</p>
+                    </div>
+                  ) : results ? (
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-2 gap-4">
+                        {[
+                          { key: 'lumbarStability', label: '腰椎安定性' },
+                          { key: 'trunkControl', label: '体幹制御' },
+                          { key: 'movementPattern', label: '動作パターン' },
+                          { key: 'compensatoryMovement', label: '代償動作' }
+                        ].map(({ key, label }) => {
+                          const score = results[key as keyof TestAnalysis] as number
+                          const { label: scoreLabel, color } = getScoreLabel(score)
+                          return (
+                            <div key={key} className="bg-gray-50 p-4 rounded-lg text-center">
+                              <div className="text-sm text-gray-600 mb-1">{label}</div>
+                              <div className={`text-xl font-bold ${color}`}>{scoreLabel}</div>
+                              <div className="text-xs text-gray-500">{score}/4</div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                      <div>
+                        <h4 className="font-semibold mb-3 text-gray-900">💡 推奨事項</h4>
+                        <ul className="space-y-2">
+                          {results.recommendations.map((rec, index) => (
+                            <li key={index} className="text-sm text-gray-700 flex items-start bg-blue-50 p-3 rounded-lg">
+                              <span className="text-blue-600 mr-2">•</span>
+                              {rec}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Test Protocols */}
+          <div className="space-y-4">
+            <div className="bg-white rounded-lg border shadow-sm">
+              <div className="p-4 border-b bg-gray-50">
+                <h2 className="text-lg font-semibold">🎯 テスト選択</h2>
+              </div>
+              <div className="p-4">
+                <Tabs 
+                  defaultValue={TestType.STANDING_HIP_FLEXION}
+                  onValueChange={(value) => setActiveTab(value as TestType)}
+                >
+                  <Tab value={TestType.STANDING_HIP_FLEXION} label="立位股関節">
+                    <TabContent>
+                      <TestProtocol
+                        testType={TestType.STANDING_HIP_FLEXION}
+                        isActive={isRecording && activeTab === TestType.STANDING_HIP_FLEXION}
+                        onStartTest={startRecording}
+                        onStopTest={stopRecording}
+                      />
+                    </TabContent>
+                  </Tab>
+                  
+                  <Tab value={TestType.ROCK_BACK} label="ロックバック">
+                    <TabContent>
+                      <TestProtocol
+                        testType={TestType.ROCK_BACK}
+                        isActive={isRecording && activeTab === TestType.ROCK_BACK}
+                        onStartTest={startRecording}
+                        onStopTest={stopRecording}
+                      />
+                    </TabContent>
+                  </Tab>
+                  
+                  <Tab value={TestType.SITTING_KNEE_EXTENSION} label="座位膝伸展">
+                    <TabContent>
+                      <TestProtocol
+                        testType={TestType.SITTING_KNEE_EXTENSION}
+                        isActive={isRecording && activeTab === TestType.SITTING_KNEE_EXTENSION}
+                        onStartTest={startRecording}
+                        onStopTest={stopRecording}
+                      />
+                    </TabContent>
+                  </Tab>
+                </Tabs>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

@@ -202,7 +202,7 @@ export function VideoAnalyzerUltimate() {
     }
   }, [results, currentFrame])
 
-  // AGGRESSIVE ANALYSIS - NO METADATA DEPENDENCY
+  // SMART ANALYSIS WITH VIDEO VALIDATION
   const analyzeVideo = async () => {
     if (!poseLandmarker.current || !videoRef.current || !videoFile) {
       setError('準備が完了していません')
@@ -212,30 +212,102 @@ export function VideoAnalyzerUltimate() {
     setIsAnalyzing(true)
     setResults([])
     setError(null)
-    setStatus('解析開始 - メタデータ不要モード')
+    setStatus('動画検証と解析開始...')
     
     try {
       const video = videoRef.current
       
-      // BYPASS METADATA - Use fixed duration assumptions
-      const estimatedDuration = 30 // Assume 30 seconds max
-      const frameCount = 8 // Very limited frames
+      // FORCE VIDEO LOADING FIRST
+      setStatus('動画強制読み込み中...')
+      
+      // Ensure video is loaded by trying to play it briefly
+      video.muted = true
+      try {
+        await video.play()
+        video.pause()
+        video.currentTime = 0
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      } catch (playError) {
+        setStatus('動画再生テスト失敗 - 続行します')
+      }
+      
+      // Wait for video dimensions to be available
+      let attempts = 0
+      while ((video.videoWidth === 0 || video.videoHeight === 0) && attempts < 10) {
+        setStatus(`動画次元待機中... 試行${attempts + 1}/10`)
+        await new Promise(resolve => setTimeout(resolve, 500))
+        attempts++
+      }
+      
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        setError(`動画の次元を取得できません: ${video.videoWidth}x${video.videoHeight}`)
+        return
+      }
+      
+      setStatus(`動画次元確認: ${video.videoWidth}x${video.videoHeight}`)
+      
+      // Determine duration - use actual or estimate
+      let duration = video.duration
+      if (!duration || isNaN(duration) || duration <= 0) {
+        duration = 10 // Fallback to 10 seconds
+        setStatus('動画長さ不明 - 10秒と仮定')
+      } else {
+        setStatus(`動画長さ確認: ${duration.toFixed(1)}秒`)
+      }
+      
+      const frameCount = 6 // Reduced for stability
       const analysisResults: AnalysisResult[] = []
 
       for (let i = 0; i < frameCount; i++) {
-        // Distribute frames across estimated duration
-        const time = (i / (frameCount - 1)) * estimatedDuration
+        const time = (i / (frameCount - 1)) * Math.min(duration, 30) // Cap at 30s
         
-        setStatus(`フレーム ${i + 1}/${frameCount} 解析中 (${time.toFixed(1)}s推定)`)
+        setStatus(`フレーム ${i + 1}/${frameCount} 解析中 (${time.toFixed(1)}s)`)
         
         try {
-          // Force video to time without waiting for metadata
+          // Set video time and wait for seek
           video.currentTime = time
           
-          // Brief wait - no metadata dependency
-          await new Promise(resolve => setTimeout(resolve, 500))
+          // Wait for seek completion with timeout
+          await new Promise<void>((resolve) => {
+            let resolved = false
+            const timeout = setTimeout(() => {
+              if (!resolved) {
+                resolved = true
+                resolve()
+              }
+            }, 2000)
+            
+            const onSeeked = () => {
+              if (!resolved) {
+                clearTimeout(timeout)
+                video.removeEventListener('seeked', onSeeked)
+                resolved = true
+                resolve()
+              }
+            }
+            
+            video.addEventListener('seeked', onSeeked, { once: true })
+            
+            // If already at correct time
+            if (Math.abs(video.currentTime - time) < 0.1) {
+              if (!resolved) {
+                clearTimeout(timeout)
+                resolved = true
+                resolve()
+              }
+            }
+          })
           
-          // Try analysis regardless of video state
+          // Additional small wait for frame to be ready
+          await new Promise(resolve => setTimeout(resolve, 200))
+          
+          // Double-check video dimensions before analysis
+          if (video.videoWidth === 0 || video.videoHeight === 0) {
+            setStatus(`フレーム ${i}: 動画次元エラー - スキップ`)
+            continue
+          }
+          
+          // Analyze frame
           const result = poseLandmarker.current.detectForVideo(video, time * 1000)
           
           const landmarks = result.landmarks[0] || []
@@ -259,7 +331,8 @@ export function VideoAnalyzerUltimate() {
           setAnalysisProgress((i + 1) / frameCount * 100)
           
         } catch (error) {
-          setStatus(`フレーム ${i} エラー: ${error}`)
+          setStatus(`フレーム ${i} エラー: ${error} - 続行`)
+          console.warn(`Frame ${i} analysis error:`, error)
         }
       }
 
@@ -271,7 +344,7 @@ export function VideoAnalyzerUltimate() {
         video.currentTime = 0
         setTimeout(drawCurrentFrame, 300)
       } else {
-        setError('姿勢検出できませんでした - 別の動画を試してください')
+        setError('姿勢検出できませんでした - 動画形式を確認してください')
       }
     } catch (error) {
       setError(`解析失敗: ${error}`)

@@ -314,7 +314,7 @@ export function VideoAnalyzerTDPT() {
     }
   }, [results, currentFrame])
 
-  // Simple video analysis
+  // Video analysis with aggressive loading strategy
   const analyzeVideo = async () => {
     if (!poseLandmarker.current || !videoRef.current || !videoFile) {
       setError('準備が完了していません')
@@ -329,8 +329,47 @@ export function VideoAnalyzerTDPT() {
     try {
       const video = videoRef.current
 
-      // Wait for video to be ready
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      // FORCE VIDEO TO LOAD METADATA
+      console.log('動画強制読み込み開始...')
+      
+      // Step 1: Force play to trigger metadata loading
+      video.muted = true
+      video.playsInline = true
+      
+      try {
+        await video.play()
+        console.log('動画再生成功')
+        video.pause()
+        video.currentTime = 0
+        await new Promise(resolve => setTimeout(resolve, 1000))
+      } catch (playError) {
+        console.log('動画再生失敗、続行:', playError)
+      }
+
+      // Step 2: Wait for video dimensions
+      let attempts = 0
+      while ((video.videoWidth === 0 || video.videoHeight === 0) && attempts < 20) {
+        console.log(`動画次元待機 ${attempts + 1}/20: ${video.videoWidth}x${video.videoHeight}`)
+        await new Promise(resolve => setTimeout(resolve, 500))
+        attempts++
+        
+        // Try loading every 5 attempts
+        if (attempts % 5 === 0) {
+          try {
+            video.load()
+            await new Promise(resolve => setTimeout(resolve, 1000))
+          } catch (e) {
+            console.log('リロード失敗:', e)
+          }
+        }
+      }
+
+      if (video.videoWidth === 0 || video.videoHeight === 0) {
+        setError(`動画の次元を取得できません。現在: ${video.videoWidth}x${video.videoHeight}`)
+        return
+      }
+
+      console.log(`動画準備完了: ${video.videoWidth}x${video.videoHeight}`)
       
       // Try to get video duration, fallback to 10 seconds
       let duration = video.duration
@@ -341,17 +380,62 @@ export function VideoAnalyzerTDPT() {
       
       console.log(`動画解析開始: ${duration.toFixed(1)}秒`)
       
-      const frameCount = 5
+      const frameCount = 3 // Reduced for better stability
       const analysisResults: AnalysisResult[] = []
 
       for (let i = 0; i < frameCount; i++) {
-        const time = (i / (frameCount - 1)) * Math.min(duration, 15)
+        const time = (i / (frameCount - 1)) * Math.min(duration, 10)
         
         console.log(`フレーム ${i + 1}/${frameCount}: ${time.toFixed(1)}秒`)
         
         try {
+          // Set video time and wait
           video.currentTime = time
-          await new Promise(resolve => setTimeout(resolve, 800))
+          
+          // Wait for seek with timeout
+          await new Promise<void>((resolve) => {
+            let resolved = false
+            const timeout = setTimeout(() => {
+              if (!resolved) {
+                console.log(`フレーム ${i + 1}: シークタイムアウト`)
+                resolved = true
+                resolve()
+              }
+            }, 2000)
+            
+            const onSeeked = () => {
+              if (!resolved) {
+                clearTimeout(timeout)
+                video.removeEventListener('seeked', onSeeked)
+                console.log(`フレーム ${i + 1}: シーク完了`)
+                resolved = true
+                resolve()
+              }
+            }
+            
+            video.addEventListener('seeked', onSeeked, { once: true })
+            
+            // If already at correct time
+            if (Math.abs(video.currentTime - time) < 0.1) {
+              if (!resolved) {
+                clearTimeout(timeout)
+                console.log(`フレーム ${i + 1}: 既に正しい時間位置`)
+                resolved = true
+                resolve()
+              }
+            }
+          })
+          
+          // Additional wait for frame stability
+          await new Promise(resolve => setTimeout(resolve, 500))
+          
+          // Double check video dimensions before analysis
+          if (video.videoWidth === 0 || video.videoHeight === 0) {
+            console.warn(`フレーム ${i + 1}: 動画次元エラー ${video.videoWidth}x${video.videoHeight}`)
+            continue
+          }
+          
+          console.log(`フレーム ${i + 1}: MediaPipe解析実行 (${video.videoWidth}x${video.videoHeight})`)
           
           // MediaPipe analysis
           const result = poseLandmarker.current.detectForVideo(video, time * 1000)
@@ -377,13 +461,15 @@ export function VideoAnalyzerTDPT() {
               confidence
             })
 
-            console.log(`フレーム ${i + 1}: TDPT変換完了, 角度=${angles.hipFlexion || 'N/A'}°`)
+            console.log(`フレーム ${i + 1}: TDPT変換完了, 股関節=${angles.hipFlexion || 'N/A'}°, 膝=${angles.kneeFlexion || 'N/A'}°`)
+          } else {
+            console.log(`フレーム ${i + 1}: ランドマーク検出なし`)
           }
 
           setAnalysisProgress((i + 1) / frameCount * 100)
           
         } catch (error) {
-          console.warn(`フレーム ${i + 1} エラー:`, error)
+          console.error(`フレーム ${i + 1} エラー:`, error)
         }
       }
 
@@ -395,7 +481,7 @@ export function VideoAnalyzerTDPT() {
         video.currentTime = 0
         setTimeout(drawCurrentFrame, 500)
       } else {
-        setError('姿勢検出できませんでした')
+        setError('姿勢検出できませんでした。動画を手動で再生してから解析を再試行してください。')
       }
     } catch (error) {
       console.error('解析エラー:', error)
@@ -460,6 +546,9 @@ export function VideoAnalyzerTDPT() {
               <div className="text-sm">
                 📁 {videoFile.name} ({(videoFile.size / 1024 / 1024).toFixed(1)} MB)
                 <div className="text-green-600 mt-1">✅ TDPT解析準備完了</div>
+                <div className="text-blue-600 mt-2 text-xs">
+                  💡 ヒント: 解析前に下の動画を一度手動で再生すると成功率が向上します
+                </div>
               </div>
             </div>
           )}
@@ -475,7 +564,7 @@ export function VideoAnalyzerTDPT() {
             <video
               ref={videoRef}
               className="w-full aspect-video object-contain"
-              controls={!isAnalyzing}
+              controls={true}
               playsInline
               muted
             />

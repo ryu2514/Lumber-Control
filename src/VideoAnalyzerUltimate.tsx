@@ -19,10 +19,18 @@ export function VideoAnalyzerUltimate() {
   const [currentFrame, setCurrentFrame] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [status, setStatus] = useState<string>('')
+  const [debugLog, setDebugLog] = useState<string[]>([])
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const poseLandmarker = useRef<PoseLandmarker | null>(null)
+
+  const addDebugLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString()
+    const logMessage = `[${timestamp}] ${message}`
+    console.log(logMessage)
+    setDebugLog(prev => [...prev.slice(-15), logMessage]) // Keep last 15 logs
+  }
 
   // Initialize MediaPipe
   const initializeMediaPipe = async () => {
@@ -54,36 +62,51 @@ export function VideoAnalyzerUltimate() {
     }
   }
 
-  // Handle video upload - NO METADATA DEPENDENCY
+  // Handle video upload with debug logging
   const handleVideoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file || !file.type.startsWith('video/')) {
       setError('動画ファイルを選択してください')
+      addDebugLog('ファイル選択エラー: 動画ファイルではない')
       return
     }
 
     setStatus(`動画ファイル選択: ${file.name}`)
+    addDebugLog(`動画ファイル選択: ${file.name}, タイプ: ${file.type}, サイズ: ${(file.size/1024/1024).toFixed(1)}MB`)
     setVideoFile(file)
     setResults([])
     setCurrentFrame(0)
     setError(null)
+    setDebugLog([]) // Clear previous logs
     
     if (videoRef.current) {
       // Clean up previous URL
       if (videoRef.current.src) {
         URL.revokeObjectURL(videoRef.current.src)
+        addDebugLog('前回の動画URLをクリーンアップ')
       }
       
       const url = URL.createObjectURL(file)
       videoRef.current.src = url
+      addDebugLog(`ObjectURL作成: ${url.substring(0, 50)}...`)
       
-      // Set basic properties - NO METADATA WAITING
+      // Set basic properties
       videoRef.current.muted = true
       videoRef.current.playsInline = true
       videoRef.current.controls = false
       videoRef.current.preload = 'auto'
       
-      setStatus('動画ファイル準備完了 - メタデータ不要モード')
+      // Add event listeners for debugging
+      videoRef.current.onloadstart = () => addDebugLog('動画読み込み開始')
+      videoRef.current.onloadedmetadata = () => {
+        const v = videoRef.current!
+        addDebugLog(`メタデータ読み込み完了: ${v.videoWidth}x${v.videoHeight}, ${v.duration?.toFixed(1)}s`)
+      }
+      videoRef.current.oncanplay = () => addDebugLog('動画再生準備完了')
+      videoRef.current.onerror = (e) => addDebugLog(`動画エラー: ${e}`)
+      
+      setStatus('動画ファイル準備完了 - 解析可能')
+      addDebugLog('動画ファイル準備完了')
     }
   }
 
@@ -202,69 +225,103 @@ export function VideoAnalyzerUltimate() {
     }
   }, [results, currentFrame])
 
-  // SMART ANALYSIS WITH VIDEO VALIDATION
+  // DETAILED DEBUG ANALYSIS
   const analyzeVideo = async () => {
     if (!poseLandmarker.current || !videoRef.current || !videoFile) {
       setError('準備が完了していません')
+      addDebugLog('分析失敗: 必要な要素が不足')
       return
     }
 
     setIsAnalyzing(true)
     setResults([])
     setError(null)
+    setDebugLog([]) // Clear previous logs
     setStatus('動画検証と解析開始...')
+    addDebugLog('解析開始')
     
     try {
       const video = videoRef.current
+      addDebugLog(`動画ファイル: ${videoFile.name}, サイズ: ${(videoFile.size/1024/1024).toFixed(1)}MB`)
       
       // FORCE VIDEO LOADING FIRST
       setStatus('動画強制読み込み中...')
+      addDebugLog('動画強制読み込み開始')
       
       // Ensure video is loaded by trying to play it briefly
       video.muted = true
+      video.playsInline = true
       try {
+        addDebugLog('動画再生テスト開始')
         await video.play()
+        addDebugLog('動画再生成功')
         video.pause()
+        addDebugLog('動画一時停止')
         video.currentTime = 0
         await new Promise(resolve => setTimeout(resolve, 1000))
+        addDebugLog('動画再生テスト完了')
       } catch (playError) {
+        addDebugLog(`動画再生テスト失敗: ${playError}`)
         setStatus('動画再生テスト失敗 - 続行します')
       }
       
+      // Check video state
+      addDebugLog(`動画状態: readyState=${video.readyState}, networkState=${video.networkState}`)
+      
       // Wait for video dimensions to be available
       let attempts = 0
-      while ((video.videoWidth === 0 || video.videoHeight === 0) && attempts < 10) {
-        setStatus(`動画次元待機中... 試行${attempts + 1}/10`)
+      while ((video.videoWidth === 0 || video.videoHeight === 0) && attempts < 15) {
+        setStatus(`動画次元待機中... 試行${attempts + 1}/15`)
+        addDebugLog(`次元チェック ${attempts + 1}: ${video.videoWidth}x${video.videoHeight}`)
         await new Promise(resolve => setTimeout(resolve, 500))
         attempts++
+        
+        // Try to force metadata loading
+        if (attempts % 5 === 0) {
+          try {
+            video.load()
+            addDebugLog(`強制リロード実行 (試行${attempts})`)
+          } catch (e) {
+            addDebugLog(`強制リロード失敗: ${e}`)
+          }
+        }
       }
       
       if (video.videoWidth === 0 || video.videoHeight === 0) {
-        setError(`動画の次元を取得できません: ${video.videoWidth}x${video.videoHeight}`)
+        const errorMsg = `動画の次元を取得できません: ${video.videoWidth}x${video.videoHeight}`
+        setError(errorMsg)
+        addDebugLog(errorMsg)
         return
       }
       
-      setStatus(`動画次元確認: ${video.videoWidth}x${video.videoHeight}`)
+      const dimensions = `${video.videoWidth}x${video.videoHeight}`
+      setStatus(`動画次元確認: ${dimensions}`)
+      addDebugLog(`動画次元確認: ${dimensions}`)
       
       // Determine duration - use actual or estimate
       let duration = video.duration
       if (!duration || isNaN(duration) || duration <= 0) {
         duration = 10 // Fallback to 10 seconds
         setStatus('動画長さ不明 - 10秒と仮定')
+        addDebugLog('動画長さ不明 - 10秒と仮定')
       } else {
         setStatus(`動画長さ確認: ${duration.toFixed(1)}秒`)
+        addDebugLog(`動画長さ確認: ${duration.toFixed(1)}秒`)
       }
       
-      const frameCount = 6 // Reduced for stability
+      const frameCount = 5 // Further reduced for debugging
       const analysisResults: AnalysisResult[] = []
+      addDebugLog(`解析予定フレーム数: ${frameCount}`)
 
       for (let i = 0; i < frameCount; i++) {
-        const time = (i / (frameCount - 1)) * Math.min(duration, 30) // Cap at 30s
+        const time = (i / (frameCount - 1)) * Math.min(duration, 20) // Cap at 20s
         
         setStatus(`フレーム ${i + 1}/${frameCount} 解析中 (${time.toFixed(1)}s)`)
+        addDebugLog(`フレーム ${i + 1} 開始: 時間=${time.toFixed(1)}s`)
         
         try {
-          // Set video time and wait for seek
+          // Set video time
+          addDebugLog(`フレーム ${i + 1}: 時間設定 ${time.toFixed(1)}s`)
           video.currentTime = time
           
           // Wait for seek completion with timeout
@@ -272,15 +329,17 @@ export function VideoAnalyzerUltimate() {
             let resolved = false
             const timeout = setTimeout(() => {
               if (!resolved) {
+                addDebugLog(`フレーム ${i + 1}: シークタイムアウト`)
                 resolved = true
                 resolve()
               }
-            }, 2000)
+            }, 3000)
             
             const onSeeked = () => {
               if (!resolved) {
                 clearTimeout(timeout)
                 video.removeEventListener('seeked', onSeeked)
+                addDebugLog(`フレーム ${i + 1}: シーク完了`)
                 resolved = true
                 resolve()
               }
@@ -292,32 +351,40 @@ export function VideoAnalyzerUltimate() {
             if (Math.abs(video.currentTime - time) < 0.1) {
               if (!resolved) {
                 clearTimeout(timeout)
+                addDebugLog(`フレーム ${i + 1}: 既に正しい時間位置`)
                 resolved = true
                 resolve()
               }
             }
           })
           
-          // Additional small wait for frame to be ready
-          await new Promise(resolve => setTimeout(resolve, 200))
+          // Additional wait for frame to be ready
+          await new Promise(resolve => setTimeout(resolve, 300))
+          
+          // Check video state before analysis
+          addDebugLog(`フレーム ${i + 1}: 分析前チェック - 次元=${video.videoWidth}x${video.videoHeight}, currentTime=${video.currentTime.toFixed(2)}`)
           
           // Double-check video dimensions before analysis
           if (video.videoWidth === 0 || video.videoHeight === 0) {
-            setStatus(`フレーム ${i}: 動画次元エラー - スキップ`)
+            addDebugLog(`フレーム ${i + 1}: 動画次元エラー - スキップ`)
             continue
           }
           
           // Analyze frame
+          addDebugLog(`フレーム ${i + 1}: MediaPipe解析実行`)
           const result = poseLandmarker.current.detectForVideo(video, time * 1000)
+          addDebugLog(`フレーム ${i + 1}: MediaPipe解析完了`)
           
           const landmarks = result.landmarks[0] || []
           const worldLandmarks = result.worldLandmarks[0] || []
+          addDebugLog(`フレーム ${i + 1}: ランドマーク=${landmarks.length}, ワールド=${worldLandmarks.length}`)
           
           const confidence = landmarks.length > 0 
             ? landmarks.reduce((sum: number, lm: any) => sum + (lm.visibility || 0), 0) / landmarks.length
             : 0
             
           const hipAngle = calculateHipAngle(worldLandmarks)
+          addDebugLog(`フレーム ${i + 1}: 信頼度=${(confidence*100).toFixed(1)}%, 角度=${hipAngle || 'N/A'}`)
 
           analysisResults.push({
             frame: i,
@@ -329,28 +396,40 @@ export function VideoAnalyzerUltimate() {
           })
 
           setAnalysisProgress((i + 1) / frameCount * 100)
+          addDebugLog(`フレーム ${i + 1}: 完了 (進捗: ${((i + 1) / frameCount * 100).toFixed(1)}%)`)
           
         } catch (error) {
-          setStatus(`フレーム ${i} エラー: ${error} - 続行`)
-          console.warn(`Frame ${i} analysis error:`, error)
+          const errorMsg = `フレーム ${i + 1} エラー: ${error}`
+          setStatus(errorMsg + ' - 続行')
+          addDebugLog(errorMsg)
+          console.error(`Frame ${i} analysis error:`, error)
         }
       }
 
       setResults(analysisResults)
       setCurrentFrame(0)
-      setStatus(`解析完了: ${analysisResults.length}フレーム取得`)
+      const completionMsg = `解析完了: ${analysisResults.length}フレーム取得`
+      setStatus(completionMsg)
+      addDebugLog(completionMsg)
       
       if (analysisResults.length > 0) {
         video.currentTime = 0
         setTimeout(drawCurrentFrame, 300)
+        addDebugLog('結果描画開始')
       } else {
-        setError('姿勢検出できませんでした - 動画形式を確認してください')
+        const errorMsg = '姿勢検出できませんでした - 動画形式を確認してください'
+        setError(errorMsg)
+        addDebugLog(errorMsg)
       }
     } catch (error) {
-      setError(`解析失敗: ${error}`)
+      const errorMsg = `解析失敗: ${error}`
+      setError(errorMsg)
       setStatus('解析失敗')
+      addDebugLog(errorMsg)
+      console.error('Analysis error:', error)
     } finally {
       setIsAnalyzing(false)
+      addDebugLog('解析処理終了')
     }
   }
 
@@ -385,6 +464,18 @@ export function VideoAnalyzerUltimate() {
       {error && (
         <div className="bg-red-50 border border-red-200 rounded-lg p-4">
           <div className="text-red-800 font-medium">⚠️ {error}</div>
+        </div>
+      )}
+
+      {/* Debug Log */}
+      {debugLog.length > 0 && (
+        <div className="bg-gray-50 border rounded-lg p-4">
+          <h3 className="font-medium mb-2">🔍 デバッグログ</h3>
+          <div className="bg-black text-green-400 p-3 rounded text-xs font-mono max-h-48 overflow-y-auto">
+            {debugLog.map((log, index) => (
+              <div key={index}>{log}</div>
+            ))}
+          </div>
         </div>
       )}
 

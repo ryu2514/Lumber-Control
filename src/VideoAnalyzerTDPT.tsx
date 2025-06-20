@@ -105,7 +105,7 @@ export function VideoAnalyzerTDPT() {
     const tdptPoints: TDPTPoint[] = new Array(24)
 
     // Helper functions
-    const midpoint = (p1: BlazePoseLandmark, p2: BlazePoseLandmark): TDPTPoint => ({
+    const midpoint = (p1: BlazePoseLandmark | TDPTPoint, p2: BlazePoseLandmark | TDPTPoint): TDPTPoint => ({
       x: (p1.x + p2.x) / 2,
       y: (p1.y + p2.y) / 2,
       z: (p1.z + p2.z) / 2
@@ -123,21 +123,27 @@ export function VideoAnalyzerTDPT() {
       z: point.z + offset.z
     })
 
+    const pointFromLandmark = (landmark: BlazePoseLandmark): TDPTPoint => ({
+      x: landmark.x,
+      y: landmark.y,
+      z: landmark.z
+    })
+
     // Direct mappings
-    tdptPoints[2] = { x: landmarks[11].x, y: landmarks[11].y, z: landmarks[11].z } // left_shoulder
-    tdptPoints[3] = { x: landmarks[12].x, y: landmarks[12].y, z: landmarks[12].z } // right_shoulder
-    tdptPoints[4] = { x: landmarks[13].x, y: landmarks[13].y, z: landmarks[13].z } // left_elbow
-    tdptPoints[5] = { x: landmarks[14].x, y: landmarks[14].y, z: landmarks[14].z } // right_elbow
-    tdptPoints[6] = { x: landmarks[15].x, y: landmarks[15].y, z: landmarks[15].z } // left_wrist
-    tdptPoints[7] = { x: landmarks[16].x, y: landmarks[16].y, z: landmarks[16].z } // right_wrist
-    tdptPoints[13] = { x: landmarks[23].x, y: landmarks[23].y, z: landmarks[23].z } // left_hip
-    tdptPoints[14] = { x: landmarks[24].x, y: landmarks[24].y, z: landmarks[24].z } // right_hip
-    tdptPoints[15] = { x: landmarks[25].x, y: landmarks[25].y, z: landmarks[25].z } // left_knee
-    tdptPoints[16] = { x: landmarks[26].x, y: landmarks[26].y, z: landmarks[26].z } // right_knee
-    tdptPoints[17] = { x: landmarks[27].x, y: landmarks[27].y, z: landmarks[27].z } // left_ankle
-    tdptPoints[18] = { x: landmarks[28].x, y: landmarks[28].y, z: landmarks[28].z } // right_ankle
-    tdptPoints[21] = { x: landmarks[31].x, y: landmarks[31].y, z: landmarks[31].z } // left_toe
-    tdptPoints[22] = { x: landmarks[32].x, y: landmarks[32].y, z: landmarks[32].z } // right_toe
+    tdptPoints[2] = pointFromLandmark(landmarks[11]) // left_shoulder
+    tdptPoints[3] = pointFromLandmark(landmarks[12]) // right_shoulder
+    tdptPoints[4] = pointFromLandmark(landmarks[13]) // left_elbow
+    tdptPoints[5] = pointFromLandmark(landmarks[14]) // right_elbow
+    tdptPoints[6] = pointFromLandmark(landmarks[15]) // left_wrist
+    tdptPoints[7] = pointFromLandmark(landmarks[16]) // right_wrist
+    tdptPoints[13] = pointFromLandmark(landmarks[23]) // left_hip
+    tdptPoints[14] = pointFromLandmark(landmarks[24]) // right_hip
+    tdptPoints[15] = pointFromLandmark(landmarks[25]) // left_knee
+    tdptPoints[16] = pointFromLandmark(landmarks[26]) // right_knee
+    tdptPoints[17] = pointFromLandmark(landmarks[27]) // left_ankle
+    tdptPoints[18] = pointFromLandmark(landmarks[28]) // right_ankle
+    tdptPoints[21] = pointFromLandmark(landmarks[31]) // left_toe
+    tdptPoints[22] = pointFromLandmark(landmarks[32]) // right_toe
 
     // Calculated points
     const shoulderMid = midpoint(landmarks[11], landmarks[12])
@@ -150,7 +156,7 @@ export function VideoAnalyzerTDPT() {
       y: landmarks[0].y - neckCenter.y,
       z: landmarks[0].z - neckCenter.z
     }
-    tdptPoints[0] = addOffset({ x: landmarks[0].x, y: landmarks[0].y, z: landmarks[0].z }, 
+    tdptPoints[0] = addOffset(pointFromLandmark(landmarks[0]), 
                              { x: noseToNeck.x * 0.3, y: noseToNeck.y * 0.3, z: noseToNeck.z * 0.3 })
 
     // 1: neck

@@ -19,6 +19,7 @@ export function VideoAnalyzerSimplest() {
   const [currentFrame, setCurrentFrame] = useState(0)
   const [error, setError] = useState<string | null>(null)
   const [logs, setLogs] = useState<string[]>([])
+  const [videoReady, setVideoReady] = useState(false)
 
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -61,8 +62,8 @@ export function VideoAnalyzerSimplest() {
     }
   }
 
-  // Handle video upload
-  const handleVideoUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  // Handle video upload with aggressive loading
+  const handleVideoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (!file || !file.type.startsWith('video/')) {
       setError('動画ファイルを選択してください')
@@ -82,10 +83,86 @@ export function VideoAnalyzerSimplest() {
       }
       
       const url = URL.createObjectURL(file)
-      videoRef.current.src = url
-      videoRef.current.muted = true
-      videoRef.current.playsInline = true
+      const video = videoRef.current
+      
+      // Set properties first
+      video.muted = true
+      video.playsInline = true
+      video.autoplay = false
+      video.controls = true
+      video.preload = 'metadata'
+      
+      // Set up event listeners
+      video.onloadedmetadata = () => {
+        log(`メタデータ読み込み: ${video.videoWidth}x${video.videoHeight}, ${video.duration?.toFixed(1)}s`)
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          setVideoReady(true)
+          log('動画準備完了!')
+        }
+      }
+      
+      video.oncanplay = () => {
+        log('動画再生準備完了')
+        if (video.videoWidth > 0 && video.videoHeight > 0) {
+          setVideoReady(true)
+        }
+      }
+      
+      video.onerror = (e) => {
+        log(`動画エラー: ${e}`)
+        setVideoReady(false)
+      }
+      
+      // Set source and load
+      video.src = url
+      video.load()
+      
+      log('動画読み込み開始')
+      
+      // Try to force metadata loading
+      try {
+        // User gesture might be required, so try play/pause
+        setTimeout(async () => {
+          try {
+            log('ユーザー操作なしで再生テスト')
+            await video.play()
+            log('再生成功 - 一時停止')
+            video.pause()
+            video.currentTime = 0
+          } catch (e) {
+            log(`自動再生失敗: ${e} - 手動で再生してください`)
+          }
+        }, 1000)
+      } catch (e) {
+        log(`初期化エラー: ${e}`)
+      }
+      
       log('動画ファイル準備完了')
+    }
+  }
+
+  // Manual video preparation
+  const forceVideoLoad = async () => {
+    if (!videoRef.current) return
+    
+    const video = videoRef.current
+    log('手動動画読み込み開始')
+    
+    try {
+      await video.play()
+      log('手動再生成功')
+      video.pause()
+      video.currentTime = 0
+      log(`動画情報: ${video.videoWidth}x${video.videoHeight}, readyState=${video.readyState}`)
+      
+      if (video.videoWidth > 0 && video.videoHeight > 0) {
+        setVideoReady(true)
+        log('動画準備完了!')
+      } else {
+        log('動画次元が不正です')
+      }
+    } catch (e) {
+      log(`手動再生失敗: ${e}`)
     }
   }
 
@@ -349,9 +426,29 @@ export function VideoAnalyzerSimplest() {
           
           {videoFile && (
             <div className="mt-4 p-4 bg-gray-50 rounded-lg">
-              <div className="text-sm">
+              <div className="text-sm mb-3">
                 📁 {videoFile.name} ({(videoFile.size / 1024 / 1024).toFixed(1)} MB)
               </div>
+              
+              {!videoReady && (
+                <div className="space-y-2">
+                  <div className="text-yellow-600 text-sm">
+                    ⚠️ 動画が準備されていません。手動で読み込んでください。
+                  </div>
+                  <button
+                    onClick={forceVideoLoad}
+                    className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 text-sm"
+                  >
+                    🔄 動画を手動読み込み
+                  </button>
+                </div>
+              )}
+              
+              {videoReady && (
+                <div className="text-green-600 text-sm">
+                  ✅ 動画準備完了 - 解析可能
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -379,10 +476,12 @@ export function VideoAnalyzerSimplest() {
           <div className="space-y-4">
             <button
               onClick={analyzeVideo}
-              disabled={isAnalyzing}
+              disabled={isAnalyzing || !videoReady}
               className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium text-lg"
             >
-              {isAnalyzing ? `🔄 解析中... ${analysisProgress.toFixed(0)}%` : '🔍 解析開始 (3フレーム)'}
+              {isAnalyzing ? `🔄 解析中... ${analysisProgress.toFixed(0)}%` : 
+               !videoReady ? '⚠️ 動画を先に読み込んでください' : 
+               '🔍 解析開始 (3フレーム)'}
             </button>
 
             {isAnalyzing && (

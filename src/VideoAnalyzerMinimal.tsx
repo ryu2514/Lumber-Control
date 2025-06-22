@@ -81,12 +81,31 @@ export function VideoAnalyzerMinimal() {
       videoRef.current.muted = true
       videoRef.current.playsInline = true
       
-      // Set up play detection
-      videoRef.current.onplay = () => {
-        console.log('ユーザーが動画を再生しました')
+      // Set up multiple event listeners for play detection
+      const video = videoRef.current
+      
+      const handlePlay = () => {
+        console.log('動画再生イベント検出')
         setUserPlayedVideo(true)
         setError(null)
       }
+      
+      const handleTimeUpdate = () => {
+        console.log('動画時間更新イベント検出')
+        setUserPlayedVideo(true)
+        setError(null)
+      }
+      
+      // Multiple event listeners to catch any user interaction
+      video.addEventListener('play', handlePlay)
+      video.addEventListener('playing', handlePlay)
+      video.addEventListener('timeupdate', handleTimeUpdate)
+      video.addEventListener('loadeddata', () => {
+        console.log('動画データ読み込み完了')
+      })
+      video.addEventListener('canplay', () => {
+        console.log('動画再生可能状態')
+      })
     }
   }
 
@@ -201,7 +220,7 @@ export function VideoAnalyzerMinimal() {
     }
   }, [results, currentFrame])
 
-  // SIMPLE ANALYSIS - USER MUST PLAY VIDEO FIRST
+  // SIMPLE ANALYSIS
   const analyzeVideo = async () => {
     if (!poseLandmarker.current || !videoRef.current || !videoFile) {
       setError('準備が完了していません')
@@ -209,8 +228,7 @@ export function VideoAnalyzerMinimal() {
     }
 
     if (!userPlayedVideo) {
-      setError('先に動画を手動で再生してください')
-      return
+      console.log('ユーザー再生未検出ですが、解析を試行します')
     }
 
     setIsAnalyzing(true)
@@ -354,6 +372,16 @@ export function VideoAnalyzerMinimal() {
                   <div className="text-yellow-700 text-xs mt-1">
                     動画を再生することで、ブラウザが動画データを正しく読み込みます
                   </div>
+                  <button
+                    onClick={() => {
+                      console.log('手動で動画再生状態を強制設定')
+                      setUserPlayedVideo(true)
+                      setError(null)
+                    }}
+                    className="mt-2 px-3 py-1 bg-yellow-600 text-white rounded text-xs hover:bg-yellow-700"
+                  >
+                    🚀 強制的に解析を有効化
+                  </button>
                 </div>
               )}
               
@@ -391,11 +419,10 @@ export function VideoAnalyzerMinimal() {
           <div className="space-y-4">
             <button
               onClick={analyzeVideo}
-              disabled={isAnalyzing || !userPlayedVideo}
+              disabled={isAnalyzing}
               className="w-full px-4 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 font-medium text-lg"
             >
               {isAnalyzing ? `🔄 解析中... ${analysisProgress.toFixed(0)}%` : 
-               !userPlayedVideo ? '⚠️ 先に動画を再生してください' : 
                '🔍 解析開始 (3フレーム)'}
             </button>
 

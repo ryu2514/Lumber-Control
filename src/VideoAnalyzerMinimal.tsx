@@ -220,15 +220,11 @@ export function VideoAnalyzerMinimal() {
     }
   }, [results, currentFrame])
 
-  // SIMPLE ANALYSIS
+  // ANALYSIS WITH AGGRESSIVE VIDEO LOADING
   const analyzeVideo = async () => {
     if (!poseLandmarker.current || !videoRef.current || !videoFile) {
       setError('準備が完了していません')
       return
-    }
-
-    if (!userPlayedVideo) {
-      console.log('ユーザー再生未検出ですが、解析を試行します')
     }
 
     setIsAnalyzing(true)
@@ -239,15 +235,68 @@ export function VideoAnalyzerMinimal() {
     try {
       const video = videoRef.current
       
-      // Simple check
-      console.log(`動画状態: ${video.videoWidth}x${video.videoHeight}, duration=${video.duration}`)
+      console.log(`初期動画状態: ${video.videoWidth}x${video.videoHeight}, duration=${video.duration}`)
       
-      if (video.videoWidth === 0 || video.videoHeight === 0) {
-        setError('動画が正しく読み込まれていません。動画を再生してから再試行してください。')
+      // FORCE VIDEO LOADING IF NEEDED
+      if (video.videoWidth === 0 || isNaN(video.duration)) {
+        console.log('動画強制読み込み開始...')
+        
+        // Try multiple loading strategies
+        const loadAttempts = [
+          () => video.load(),
+          () => {
+            video.muted = true
+            return video.play().then(() => {
+              video.pause()
+              video.currentTime = 0
+            }).catch(() => {})
+          },
+          () => {
+            video.currentTime = 0.1
+            return new Promise(resolve => setTimeout(resolve, 500))
+          }
+        ]
+        
+        for (let attempt = 0; attempt < loadAttempts.length; attempt++) {
+          console.log(`読み込み試行 ${attempt + 1}/${loadAttempts.length}`)
+          
+          try {
+            await loadAttempts[attempt]()
+            await new Promise(resolve => setTimeout(resolve, 1000))
+            
+            console.log(`試行後: ${video.videoWidth}x${video.videoHeight}, duration=${video.duration}`)
+            
+            if (video.videoWidth > 0 && !isNaN(video.duration)) {
+              console.log('動画読み込み成功!')
+              break
+            }
+          } catch (e) {
+            console.log(`試行 ${attempt + 1} 失敗:`, e)
+          }
+          
+          // Last attempt - wait longer
+          if (attempt === loadAttempts.length - 1) {
+            console.log('最終待機...')
+            await new Promise(resolve => setTimeout(resolve, 3000))
+          }
+        }
+      }
+      
+      // Final check
+      console.log(`最終動画状態: ${video.videoWidth}x${video.videoHeight}, duration=${video.duration}`)
+      
+      if (video.videoWidth === 0) {
+        setError('動画の読み込みに失敗しました。ブラウザで動画を手動で再生してから再試行してください。')
         return
       }
 
-      const duration = video.duration || 10
+      // Use actual duration or fallback
+      let duration = video.duration
+      if (isNaN(duration) || duration <= 0) {
+        duration = 10
+        console.log('動画長さ不明 - 10秒と仮定')
+      }
+      
       const frameCount = 3
       const analysisResults: AnalysisResult[] = []
 
@@ -257,11 +306,53 @@ export function VideoAnalyzerMinimal() {
         console.log(`フレーム ${i + 1}/${frameCount}: ${time.toFixed(1)}秒`)
         
         try {
-          // Simple seek
+          // Seek with retry
           video.currentTime = time
-          await new Promise(resolve => setTimeout(resolve, 1000))
           
-          console.log(`解析実行: ${video.videoWidth}x${video.videoHeight}`)
+          // Wait for seek to complete
+          await new Promise<void>((resolve) => {
+            let resolved = false
+            const timeout = setTimeout(() => {
+              if (!resolved) {
+                console.log(`フレーム ${i + 1}: シークタイムアウト`)
+                resolved = true
+                resolve()
+              }
+            }, 3000)
+            
+            const onSeeked = () => {
+              if (!resolved) {
+                clearTimeout(timeout)
+                video.removeEventListener('seeked', onSeeked)
+                console.log(`フレーム ${i + 1}: シーク完了`)
+                resolved = true
+                resolve()
+              }
+            }
+            
+            video.addEventListener('seeked', onSeeked, { once: true })
+            
+            // If already at correct time
+            if (Math.abs(video.currentTime - time) < 0.1) {
+              if (!resolved) {
+                clearTimeout(timeout)
+                console.log(`フレーム ${i + 1}: 既に正しい時間位置`)
+                resolved = true
+                resolve()
+              }
+            }
+          })
+          
+          // Additional wait for stability
+          await new Promise(resolve => setTimeout(resolve, 500))
+          
+          console.log(`フレーム ${i + 1}: MediaPipe解析実行 (${video.videoWidth}x${video.videoHeight})`)
+          
+          // Check video state before analysis
+          if (video.videoWidth === 0) {
+            console.warn(`フレーム ${i + 1}: 動画次元エラー`)
+            continue
+          }
           
           // MediaPipe analysis
           const result = poseLandmarker.current.detectForVideo(video, time * 1000)
@@ -280,7 +371,9 @@ export function VideoAnalyzerMinimal() {
               confidence
             })
 
-            console.log(`フレーム ${i + 1}: 完了, 股関節=${angles.hipFlexion}°`)
+            console.log(`フレーム ${i + 1}: 完了, 股関節=${angles.hipFlexion}°, 膝=${angles.kneeFlexion}°`)
+          } else {
+            console.log(`フレーム ${i + 1}: ランドマーク検出なし`)
           }
 
           setAnalysisProgress((i + 1) / frameCount * 100)
@@ -298,7 +391,7 @@ export function VideoAnalyzerMinimal() {
         video.currentTime = 0
         setTimeout(drawCurrentFrame, 500)
       } else {
-        setError('姿勢検出できませんでした')
+        setError('姿勢検出できませんでした。動画形式を確認するか、別の動画で試してください。')
       }
     } catch (error) {
       console.error('解析エラー:', error)

@@ -62,9 +62,9 @@ export function VideoAnalyzerWorking() {
         },
         runningMode: 'IMAGE',
         numPoses: 1,
-        minPoseDetectionConfidence: 0.3,
-        minPosePresenceConfidence: 0.3,
-        minTrackingConfidence: 0.3,
+        minPoseDetectionConfidence: 0.1,
+        minPosePresenceConfidence: 0.1,
+        minTrackingConfidence: 0.1,
         outputSegmentationMasks: false
       })
 
@@ -121,9 +121,9 @@ export function VideoAnalyzerWorking() {
     log('動画ファイル準備完了')
   }
 
-  // Create frame data from video at specific time
+  // Enhanced frame capture with user interaction
   const captureVideoFrame = async (video: HTMLVideoElement, targetTime: number, canvas: HTMLCanvasElement): Promise<boolean> => {
-    return new Promise((resolve) => {
+    return new Promise(async (resolve) => {
       let resolved = false
 
       const processFrame = () => {
@@ -144,22 +144,49 @@ export function VideoAnalyzerWorking() {
           canvas.width = width
           canvas.height = height
           
-          // Draw video frame to canvas
+          // Clear canvas first
           ctx.clearRect(0, 0, width, height)
+          
+          // Draw video frame to canvas
           ctx.drawImage(video, 0, 0, width, height)
           
-          log(`フレーム取得成功: ${width}x${height} @ ${targetTime.toFixed(1)}s`)
-          resolve(true)
+          // Check if frame has content
+          const imageData = ctx.getImageData(0, 0, width, height)
+          const pixels = imageData.data
+          let hasContent = false
+          
+          // Sample some pixels to check if frame has content
+          for (let i = 0; i < pixels.length; i += 4) {
+            const r = pixels[i]
+            const g = pixels[i + 1]
+            const b = pixels[i + 2]
+            if (r > 10 || g > 10 || b > 10) {
+              hasContent = true
+              break
+            }
+          }
+          
+          log(`フレーム取得: ${width}x${height} @ ${targetTime.toFixed(1)}s, コンテンツ=${hasContent ? 'あり' : 'なし'}`)
+          resolve(hasContent)
         } catch (e) {
           log(`フレーム取得エラー: ${e}`)
           resolve(false)
         }
       }
 
+      // Try to force video to play first
+      try {
+        await video.play()
+        log('動画再生開始')
+        video.pause()
+        await new Promise(resolve => setTimeout(resolve, 100))
+      } catch (playError) {
+        log(`動画再生試行: ${playError}`)
+      }
+
       const onSeeked = () => {
         video.removeEventListener('seeked', onSeeked)
-        // Small delay for frame stability
-        setTimeout(processFrame, 100)
+        setTimeout(processFrame, 200)
       }
 
       const onTimeUpdate = () => {
@@ -184,7 +211,7 @@ export function VideoAnalyzerWorking() {
           log(`フレーム取得タイムアウト @ ${targetTime.toFixed(1)}s`)
           processFrame()
         }
-      }, 3000)
+      }, 2000)
     })
   }
 
@@ -252,39 +279,47 @@ export function VideoAnalyzerWorking() {
 
     if (!landmarks || landmarks.length === 0) return
 
-    // Draw all 33 landmarks with visibility-based sizing
+    // Draw all 33 landmarks with enhanced visibility
     landmarks.forEach((landmark, index) => {
-      if (landmark.visibility > 0.1) {
+      if (landmark.visibility > 0.01) { // Lower threshold for visibility
         const x = landmark.x * canvas.width
         const y = landmark.y * canvas.height
-        const size = Math.max(2, landmark.visibility * 8)
+        const size = Math.max(4, landmark.visibility * 12) // Larger landmark points
         
         ctx.beginPath()
         ctx.arc(x, y, size, 0, 2 * Math.PI)
         
-        // Color code by body region
+        // Enhanced color coding by body region
         if ([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].includes(index)) {
-          ctx.fillStyle = '#FF4444' // Head/face
+          ctx.fillStyle = '#FF0000' // Head/face - Red
         } else if ([11, 12, 13, 14, 15, 16].includes(index)) {
-          ctx.fillStyle = '#44FF44' // Upper body
+          ctx.fillStyle = '#00FF00' // Upper body - Green  
         } else if ([17, 18, 19, 20, 21, 22].includes(index)) {
-          ctx.fillStyle = '#4444FF' // Hands
+          ctx.fillStyle = '#0000FF' // Hands - Blue
         } else if ([23, 24].includes(index)) {
-          ctx.fillStyle = '#FFAA00' // Hips
+          ctx.fillStyle = '#FFD700' // Hips - Gold
         } else if ([25, 26, 27, 28].includes(index)) {
-          ctx.fillStyle = '#FF44FF' // Legs
+          ctx.fillStyle = '#FF00FF' // Legs - Magenta
         } else {
-          ctx.fillStyle = '#00FFFF' // Feet
+          ctx.fillStyle = '#00FFFF' // Feet - Cyan
         }
         
-        ctx.globalAlpha = landmark.visibility
+        // Fill landmark with partial transparency based on visibility
+        ctx.globalAlpha = Math.max(0.6, landmark.visibility)
         ctx.fill()
         ctx.globalAlpha = 1
         
-        // White outline for visibility
+        // Strong white outline for visibility
         ctx.strokeStyle = '#FFFFFF'
-        ctx.lineWidth = 1
+        ctx.lineWidth = 2
         ctx.stroke()
+        
+        // Add landmark index for debugging
+        if (showAdvanced) {
+          ctx.fillStyle = '#FFFFFF'
+          ctx.font = '10px Arial'
+          ctx.fillText(index.toString(), x + size + 2, y - size)
+        }
       }
     })
 
@@ -305,26 +340,31 @@ export function VideoAnalyzerWorking() {
       [27, 29], [28, 30], [29, 31], [30, 32], [27, 31], [28, 32]
     ]
 
-    ctx.lineWidth = 2
+    ctx.lineWidth = 3
     connections.forEach(([start, end]) => {
       const startPoint = landmarks[start]
       const endPoint = landmarks[end]
       
-      if (startPoint?.visibility > 0.3 && endPoint?.visibility > 0.3) {
+      if (startPoint?.visibility > 0.1 && endPoint?.visibility > 0.1) { // Lower threshold
         ctx.beginPath()
         ctx.moveTo(startPoint.x * canvas.width, startPoint.y * canvas.height)
         ctx.lineTo(endPoint.x * canvas.width, endPoint.y * canvas.height)
         
-        // Color connections by body region
+        // Enhanced color connections by body region
         if ([11, 12, 23, 24].some(i => [start, end].includes(i))) {
-          ctx.strokeStyle = '#00FF00' // Core
+          ctx.strokeStyle = '#00FF00' // Core - Green
         } else if ([25, 26, 27, 28].some(i => [start, end].includes(i))) {
-          ctx.strokeStyle = '#FF00FF' // Legs  
+          ctx.strokeStyle = '#FF00FF' // Legs - Magenta
+        } else if ([13, 14, 15, 16, 17, 18, 19, 20, 21, 22].some(i => [start, end].includes(i))) {
+          ctx.strokeStyle = '#00FFFF' // Arms/Hands - Cyan
         } else {
-          ctx.strokeStyle = '#FFFF00' // Other
+          ctx.strokeStyle = '#FFFF00' // Face/Other - Yellow
         }
         
+        // Semi-transparent lines based on landmark visibility
+        ctx.globalAlpha = Math.min(startPoint.visibility, endPoint.visibility) * 0.8 + 0.2
         ctx.stroke()
+        ctx.globalAlpha = 1
       }
     })
 
@@ -421,11 +461,11 @@ export function VideoAnalyzerWorking() {
         log(`フレーム ${i + 1}/${frameCount}: ${time.toFixed(1)}s`)
         
         try {
-          // Capture frame
+          // Capture frame with content verification
           const frameSuccess = await captureVideoFrame(video, time, processingCanvas)
           
           if (!frameSuccess) {
-            log(`フレーム ${i + 1}: 取得失敗`)
+            log(`フレーム ${i + 1}: フレーム内容なし - スキップ`)
             continue
           }
 
@@ -436,8 +476,10 @@ export function VideoAnalyzerWorking() {
           const landmarks: BlazePoseLandmark[] = result.landmarks[0] || []
           const worldLandmarks: BlazePoseLandmark[] = result.worldLandmarks[0] || []
           
+          log(`フレーム ${i + 1}: ランドマーク検出数=${landmarks.length}`)
+          
           if (landmarks.length > 0) {
-            const visibleLandmarks = landmarks.filter(lm => lm.visibility > 0.1)
+            const visibleLandmarks = landmarks.filter(lm => lm.visibility > 0.01)
             const confidence = landmarks.reduce((sum, lm) => sum + (lm.visibility || 0), 0) / landmarks.length
             const angles = calculateLumbarAngles(worldLandmarks)
 
@@ -450,9 +492,22 @@ export function VideoAnalyzerWorking() {
               confidence
             })
 
-            log(`フレーム ${i + 1}: 成功 - ${visibleLandmarks.length}点検出, 信頼度${(confidence*100).toFixed(1)}%`)
+            log(`フレーム ${i + 1}: 成功 - ${visibleLandmarks.length}/${landmarks.length}点可視, 信頼度${(confidence*100).toFixed(1)}%`)
           } else {
-            log(`フレーム ${i + 1}: ポーズ検出なし`)
+            log(`フレーム ${i + 1}: ポーズ検出なし - MediaPipeが人物を認識できませんでした`)
+            
+            // For debugging - add a dummy result to show canvas was processed
+            if (showAdvanced) {
+              analysisResults.push({
+                frame: i,
+                timestamp: time,
+                landmarks: [],
+                worldLandmarks: [],
+                angles: { hipFlexion: null, kneeFlexion: null, ankleFlexion: null, spinalAlignment: null },
+                confidence: 0
+              })
+              log(`フレーム ${i + 1}: デバッグ用空結果を追加`)
+            }
           }
 
           setAnalysisProgress((i + 1) / frameCount * 100)
@@ -566,6 +621,9 @@ export function VideoAnalyzerWorking() {
               <div className="text-sm">
                 <div className="font-medium">📁 {videoFile.name} ({(videoFile.size / 1024 / 1024).toFixed(1)} MB)</div>
                 <div className="text-green-600 mt-1">✅ 動作ポーズ解析準備完了</div>
+                <div className="text-blue-600 mt-2 text-xs">
+                  💡 解析前に動画を一度手動で再生すると検出精度が向上します
+                </div>
               </div>
             </div>
           )}
